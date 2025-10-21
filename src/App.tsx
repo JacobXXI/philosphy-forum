@@ -46,7 +46,7 @@ const topics: Topic[] = [
   }
 ]
 
-type View = 'home' | 'topic' | 'login'
+type View = 'home' | 'topic' | 'login' | 'signup'
 
 function App() {
   const [view, setView] = useState<View>('home')
@@ -79,6 +79,10 @@ function App() {
 
   const goToLogin = () => {
     setView('login')
+  }
+
+  const goToSignup = () => {
+    setView('signup')
   }
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -190,8 +194,65 @@ function App() {
             </form>
             <p className="signup-prompt" role="note">
               New to the forum?
-              <button type="button" className="signup-button">
+              <button type="button" className="signup-button" onClick={goToSignup}>
                 Create an account
+              </button>
+            </p>
+          </section>
+        )}
+
+        {view === 'signup' && (
+          <section className="signup-panel" aria-labelledby="signup-heading">
+            <h1 id="signup-heading">Join the conversation</h1>
+            <p className="signup-subtitle">
+              Create your forum account to start sharing ideas with fellow thinkers.
+            </p>
+            <form className="signup-form">
+              <label htmlFor="full-name">Full name</label>
+              <input
+                id="full-name"
+                name="fullName"
+                type="text"
+                placeholder="Ada Lovelace"
+                autoComplete="name"
+              />
+
+              <label htmlFor="signup-email">Email</label>
+              <input
+                id="signup-email"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+
+              <label htmlFor="signup-password">Password</label>
+              <input
+                id="signup-password"
+                name="password"
+                type="password"
+                placeholder="Create a password"
+                autoComplete="new-password"
+              />
+
+              <label htmlFor="signup-confirm-password">Confirm password</label>
+              <input
+                id="signup-confirm-password"
+                name="confirmPassword"
+                type="password"
+                placeholder="Re-enter your password"
+                autoComplete="new-password"
+              />
+
+              <button type="submit" className="signup-submit">
+                Create account
+              </button>
+            </form>
+
+            <p className="login-prompt" role="note">
+              Already have an account?
+              <button type="button" className="login-link" onClick={goToLogin}>
+                Sign in
               </button>
             </p>
           </section>
