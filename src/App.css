@@ -309,6 +309,32 @@
   background: #3730a3;
 }
 
+.signup-prompt {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  color: #52606d;
+  font-size: 0.95rem;
+}
+
+.signup-button {
+  border: none;
+  background: transparent;
+  color: #4338ca;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: rgba(67, 56, 202, 0.4);
+  text-decoration-thickness: 2px;
+}
+
+.signup-button:hover {
+  color: #3730a3;
+  text-decoration-color: #3730a3;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

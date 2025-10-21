@@ -188,6 +188,12 @@ function App() {
                 Sign in
               </button>
             </form>
+            <p className="signup-prompt" role="note">
+              New to the forum?
+              <button type="button" className="signup-button">
+                Create an account
+              </button>
+            </p>
           </section>
         )}
       </main>
