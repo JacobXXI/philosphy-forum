@@ -208,15 +208,6 @@ function App() {
               Create your forum account to start sharing ideas with fellow thinkers.
             </p>
             <form className="signup-form">
-              <label htmlFor="full-name">Full name</label>
-              <input
-                id="full-name"
-                name="fullName"
-                type="text"
-                placeholder="Ada Lovelace"
-                autoComplete="name"
-              />
-
               <label htmlFor="signup-email">Email</label>
               <input
                 id="signup-email"
