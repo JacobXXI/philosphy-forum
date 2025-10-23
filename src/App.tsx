@@ -1,5 +1,6 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { fetchTopic, signup } from './request'
 
 type Topic = {
   id: number
@@ -8,7 +9,7 @@ type Topic = {
   description: string
 }
 
-const topics: Topic[] = [
+const exampleTopics: Topic[] = [
   {
     id: 101,
     title: 'Can we know anything for certain?',
@@ -52,20 +53,76 @@ function App() {
   const [view, setView] = useState<View>('home')
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
+
+  // Signup form state
+  const [signupEmail, setSignupEmail] = useState('')
+  const [signupPassword, setSignupPassword] = useState('')
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState('')
+  const [signupLoading, setSignupLoading] = useState(false)
+  const [signupMessage, setSignupMessage] = useState<string | null>(null)
+  const [signupError, setSignupError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      try {
+        const result = await fetchTopic()
+        const data = (result?.data ?? undefined) as any
+        if (result?.status === 200 && data && !cancelled) {
+          const items = Array.isArray(data)
+            ? data
+            : Array.isArray(data.detail)
+            ? data.detail
+            : data.detail
+            ? [data.detail]
+            : []
+
+          const apiTopics: Topic[] = (items as any[]).map((t) => {
+            const id = Number((t as any)?.id)
+            const title = (t as any)?.title ?? (id ? `Topic ${id}` : 'Untitled')
+            const author = (t as any)?.author ?? (t as any)?.auther ?? 'Unknown'
+            const description = (t as any)?.description ?? ''
+            return { id, title, author, description }
+          }).filter((t) => Number.isFinite(t.id))
+
+          // Merge API topics with examples by ID; API overrides, but keep example
+          const merged = new Map<number, Topic>()
+          for (const ex of exampleTopics) merged.set(ex.id, ex)
+          for (const api of apiTopics) {
+            const existing = merged.get(api.id)
+            merged.set(api.id, {
+              id: api.id,
+              title: api.title ?? existing?.title ?? `Topic ${api.id}`,
+              author: api.author ?? existing?.author ?? 'Unknown',
+              description: api.description ?? existing?.description ?? ''
+            })
+          }
+          setAllTopics(Array.from(merged.values()))
+        }
+      } catch (_) {
+        // Silently keep example topics on error
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const filteredTopics = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    if (!query) return topics
+    if (!query) return allTopics
 
-    return topics.filter((topic) => {
+    return allTopics.filter((topic) => {
       const matchesTitle = topic.title.toLowerCase().includes(query)
       const matchesId = topic.id.toString().includes(query)
       return matchesTitle || matchesId
     })
-  }, [searchTerm])
+  }, [searchTerm, allTopics])
 
   const selectedTopic =
-    selectedTopicId == null ? null : topics.find((topic) => topic.id === selectedTopicId) ?? null
+    selectedTopicId == null ? null : allTopics.find((topic) => topic.id === selectedTopicId) ?? null
 
   const openTopic = (topicId: number) => {
     setSelectedTopicId(topicId)
@@ -88,6 +145,42 @@ function App() {
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setView('home')
+  }
+
+  const handleSignupSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSignupMessage(null)
+    setSignupError(false)
+
+    const email = signupEmail.trim()
+    if (!email || !signupPassword) {
+      setSignupMessage('Please enter email and password.')
+      setSignupError(true)
+      return
+    }
+    if (signupPassword !== signupConfirmPassword) {
+      setSignupMessage('Passwords do not match.')
+      setSignupError(true)
+      return
+    }
+
+    setSignupLoading(true)
+    try {
+      const res = await signup({ email, password: signupPassword })
+      const ok = res.status >= 200 && res.status < 300
+      setSignupError(!ok)
+      setSignupMessage(res.data?.detail || (ok ? 'Account created.' : 'Signup failed.'))
+      if (ok) {
+        // Optionally clear fields on success
+        setSignupPassword('')
+        setSignupConfirmPassword('')
+      }
+    } catch (e) {
+      setSignupError(true)
+      setSignupMessage('Network error while signing up.')
+    } finally {
+      setSignupLoading(false)
+    }
   }
 
   return (
@@ -207,7 +300,7 @@ function App() {
             <p className="signup-subtitle">
               Create your forum account to start sharing ideas with fellow thinkers.
             </p>
-            <form className="signup-form">
+            <form className="signup-form" onSubmit={handleSignupSubmit}>
               <label htmlFor="signup-email">Email</label>
               <input
                 id="signup-email"
@@ -215,6 +308,9 @@ function App() {
                 type="email"
                 placeholder="you@example.com"
                 autoComplete="email"
+                value={signupEmail}
+                onChange={(e) => setSignupEmail(e.target.value)}
+                required
               />
 
               <label htmlFor="signup-password">Password</label>
@@ -224,6 +320,9 @@ function App() {
                 type="password"
                 placeholder="Create a password"
                 autoComplete="new-password"
+                value={signupPassword}
+                onChange={(e) => setSignupPassword(e.target.value)}
+                required
               />
 
               <label htmlFor="signup-confirm-password">Confirm password</label>
@@ -233,11 +332,20 @@ function App() {
                 type="password"
                 placeholder="Re-enter your password"
                 autoComplete="new-password"
+                value={signupConfirmPassword}
+                onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                required
               />
 
-              <button type="submit" className="signup-submit">
-                Create account
+              <button type="submit" className="signup-submit" disabled={signupLoading}>
+                {signupLoading ? 'Creating…' : 'Create account'}
               </button>
+
+              {signupMessage && (
+                <p aria-live="polite" className={signupError ? 'error-text' : 'success-text'}>
+                  {signupMessage}
+                </p>
+              )}
             </form>
 
             <p className="login-prompt" role="note">
