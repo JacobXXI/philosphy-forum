@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopic, signup, login } from './request'
+import { fetchTopics, signup, login, TopicsResponse } from './request'
 
 type Topic = {
   id: number
@@ -68,26 +68,26 @@ function App() {
     let cancelled = false
     const run = async () => {
       try {
-        const result = await fetchTopic()
-        const data = (result?.data ?? undefined) as any
-        if (result?.status === 200 && data && !cancelled) {
-          const items = Array.isArray(data)
-            ? data
-            : Array.isArray(data.detail)
-            ? data.detail
-            : data.detail
-            ? [data.detail]
-            : []
+        const result = await fetchTopics()
+        const data = result?.data
+        if (
+          !cancelled &&
+          result?.status === 200 &&
+          data &&
+          typeof data !== 'string' &&
+          Array.isArray((data as TopicsResponse).items)
+        ) {
+          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => {
+            const fallback = exampleTopics.find((topic) => topic.id === item.id)
+            return {
+              id: item.id,
+              title: item.title ?? fallback?.title ?? `Topic ${item.id}`,
+              author: item.author ?? fallback?.author ?? 'Unknown',
+              description: fallback?.description ?? ''
+            }
+          })
 
-          const apiTopics: Topic[] = (items as any[]).map((t) => {
-            const id = Number((t as any)?.id)
-            const title = (t as any)?.title ?? (id ? `Topic ${id}` : 'Untitled')
-            const author = (t as any)?.author ?? (t as any)?.auther ?? 'Unknown'
-            const description = (t as any)?.description ?? ''
-            return { id, title, author, description }
-          }).filter((t) => Number.isFinite(t.id))
-
-          // Merge API topics with examples by ID; API overrides, but keep example
+          // Merge API topics with examples by ID; API overrides, but keep example when missing
           const merged = new Map<number, Topic>()
           for (const ex of exampleTopics) merged.set(ex.id, ex)
           for (const api of apiTopics) {
@@ -174,15 +174,26 @@ function App() {
     setSignupLoading(true)
     try {
       const res = await signup({ email, password: signupPassword })
-      const ok = res.status >= 200 && res.status < 300
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.status === 'ok'
       setSignupError(!ok)
-      const msg = res.data?.detail || (ok ? 'Account created.' : 'Signup failed.')
+      const msg =
+        typeof res.data === 'string'
+          ? res.data
+          : ok
+          ? 'Account created. You can now log in.'
+          : (res.data as any)?.message || (res.data as any)?.error || 'Signup failed.'
       setSignupMessage(msg)
       if (!ok) {
         setToast({ type: 'error', message: msg || 'Signup failed.' })
         setTimeout(() => setToast(null), 4000)
       }
       if (ok) {
+        setToast({ type: 'success', message: msg })
+        setTimeout(() => setToast(null), 4000)
         // Optionally clear fields on success
         setSignupPassword('')
         setSignupConfirmPassword('')
@@ -210,11 +221,23 @@ function App() {
     }
     try {
       const res = await login({ email, password })
-      const ok = res.status >= 200 && res.status < 300
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.status === 'ok'
       if (!ok) {
-        const msg = res.data?.detail || 'Login failed.'
+        const msg =
+          typeof res.data === 'string'
+            ? res.data
+            : (res.data as any)?.message || (res.data as any)?.error || 'Login failed.'
         setToast({ type: 'error', message: msg })
         setTimeout(() => setToast(null), 4000)
+      } else {
+        const payload = res.data as any
+        const username = payload?.user?.username ?? payload?.user?.email ?? 'there'
+        setToast({ type: 'success', message: `Welcome back, ${username}!` })
+        setTimeout(() => setToast(null), 3000)
       }
     } catch (_) {
       setToast({ type: 'error', message: 'Network error while logging in.' })
