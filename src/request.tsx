@@ -35,6 +35,24 @@ export async function signup(
   })
 }
 
+export type LoginInput = {
+  email: string,
+  password: string,
+}
+
+export type LoginResponse = {
+  detail: string
+}
+
+export async function login(
+  input: LoginInput,
+): Promise<ApiResult<LoginResponse>> {
+  return jsonFetch<LoginResponse>('/user/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
 export type TopicList = {
   detail: {
     title: string,

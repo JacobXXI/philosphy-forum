@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopic, signup } from './request'
+import { fetchTopic, signup, login } from './request'
 
 type Topic = {
   id: number
@@ -54,6 +54,7 @@ function App() {
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
+  const [toast, setToast] = useState<{ type: 'error' | 'success' | 'info'; message: string } | null>(null)
 
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('')
@@ -99,9 +100,15 @@ function App() {
             })
           }
           setAllTopics(Array.from(merged.values()))
+        } else if (!cancelled) {
+          setToast({ type: 'error', message: 'Failed to fetch topics. Showing examples.' })
+          setTimeout(() => setToast(null), 4000)
         }
       } catch (_) {
-        // Silently keep example topics on error
+        if (!cancelled) {
+          setToast({ type: 'error', message: 'Failed to fetch topics. Showing examples.' })
+          setTimeout(() => setToast(null), 4000)
+        }
       }
     }
     run()
@@ -169,7 +176,12 @@ function App() {
       const res = await signup({ email, password: signupPassword })
       const ok = res.status >= 200 && res.status < 300
       setSignupError(!ok)
-      setSignupMessage(res.data?.detail || (ok ? 'Account created.' : 'Signup failed.'))
+      const msg = res.data?.detail || (ok ? 'Account created.' : 'Signup failed.')
+      setSignupMessage(msg)
+      if (!ok) {
+        setToast({ type: 'error', message: msg || 'Signup failed.' })
+        setTimeout(() => setToast(null), 4000)
+      }
       if (ok) {
         // Optionally clear fields on success
         setSignupPassword('')
@@ -178,13 +190,52 @@ function App() {
     } catch (e) {
       setSignupError(true)
       setSignupMessage('Network error while signing up.')
+      setToast({ type: 'error', message: 'Network error while signing up.' })
+      setTimeout(() => setToast(null), 4000)
     } finally {
       setSignupLoading(false)
     }
   }
 
+  const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const fd = new FormData(form)
+    const email = (fd.get('email') as string | null)?.trim() || ''
+    const password = (fd.get('password') as string | null) || ''
+    if (!email || !password) {
+      setToast({ type: 'error', message: 'Please enter email and password.' })
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
+    try {
+      const res = await login({ email, password })
+      const ok = res.status >= 200 && res.status < 300
+      if (!ok) {
+        const msg = res.data?.detail || 'Login failed.'
+        setToast({ type: 'error', message: msg })
+        setTimeout(() => setToast(null), 4000)
+      }
+    } catch (_) {
+      setToast({ type: 'error', message: 'Network error while logging in.' })
+      setTimeout(() => setToast(null), 4000)
+    }
+  }
+
   return (
     <div className="app">
+      {toast && (
+        <div
+          className={`toast ${toast.type === 'error' ? 'toast--error' : toast.type === 'success' ? 'toast--success' : 'toast--info'}`}
+          role="alert"
+          aria-live="polite"
+        >
+          <span className="toast__msg">{toast.message}</span>
+          <button className="toast__close" onClick={() => setToast(null)} aria-label="Dismiss notification">
+            ×
+          </button>
+        </div>
+      )}
       <header className="top-bar">
         <button className="logo-button" onClick={goHome}>
           <span className="logo-mark">Φ</span>
@@ -269,7 +320,7 @@ function App() {
           <section className="login-panel" aria-labelledby="login-heading">
             <h1 id="login-heading">Welcome back</h1>
             <p className="login-subtitle">Sign in to join the conversation.</p>
-            <form className="login-form">
+            <form className="login-form" onSubmit={handleLoginSubmit}>
               <label htmlFor="email">Email</label>
               <input id="email" name="email" type="email" placeholder="you@example.com" />
 
