@@ -12,38 +12,38 @@ type Topic = {
 const exampleTopics: Topic[] = [
   {
     id: 101,
-    title: 'Can we know anything for certain?',
-    author: 'Amelia Watts',
+    title: '我们能对任何事物有确定的认知吗？',
+    author: '阿米莉亚·沃茨',
     description:
-      'How do we justify claims of certainty in a world where knowledge is always mediated by perception and interpretation?'
+      '在认知总被感知与诠释所中介的世界中，我们如何为确定性的主张辩护？'
   },
   {
     id: 204,
-    title: 'The ethics of artificial minds',
-    author: 'Ravi Kulkarni',
+    title: '人工意识的伦理',
+    author: '拉维·库尔卡尼',
     description:
-      'If an artificial intelligence demonstrates consciousness, what moral responsibilities do its creators and users have?'
+      '如果人工智能展现出意识，创造者与使用者需要承担怎样的道德责任？'
   },
   {
     id: 317,
-    title: 'Beauty, art, and subjectivity',
-    author: 'Lina Chen',
+    title: '美、艺术与主观性',
+    author: '陈丽娜',
     description:
-      'Is beauty merely in the eye of the beholder, or can we speak meaningfully about objective standards in aesthetics?'
+      '美是否只是见仁见智，抑或我们可以有意义地讨论审美的客观标准？'
   },
   {
     id: 422,
-    title: 'The meaning of free will',
-    author: 'Gabriel Nassar',
+    title: '自由意志的意义',
+    author: '加布里埃尔·纳萨尔',
     description:
-      'Does determinism undermine our sense of agency, or can free will coexist with a lawful universe?'
+      '决定论是否削弱我们的能动感，还是自由意志可以与有序的宇宙共存？'
   },
   {
     id: 538,
-    title: 'Community, identity, and justice',
-    author: 'Maya Rodríguez',
+    title: '共同体、身份与正义',
+    author: '玛雅·罗德里格斯',
     description:
-      'How should political communities balance individual rights with the responsibilities we owe to one another?'
+      '政治共同体应如何平衡个人权利与彼此之间的责任？'
   }
 ]
 
@@ -81,8 +81,8 @@ function App() {
             const fallback = exampleTopics.find((topic) => topic.id === item.id)
             return {
               id: item.id,
-              title: item.title ?? fallback?.title ?? `Topic ${item.id}`,
-              author: item.author ?? fallback?.author ?? 'Unknown',
+              title: item.title ?? fallback?.title ?? `话题 ${item.id}`,
+              author: item.author ?? fallback?.author ?? '未知',
               description: fallback?.description ?? ''
             }
           })
@@ -94,19 +94,19 @@ function App() {
             const existing = merged.get(api.id)
             merged.set(api.id, {
               id: api.id,
-              title: api.title ?? existing?.title ?? `Topic ${api.id}`,
-              author: api.author ?? existing?.author ?? 'Unknown',
+              title: api.title ?? existing?.title ?? `话题 ${api.id}`,
+              author: api.author ?? existing?.author ?? '未知',
               description: api.description ?? existing?.description ?? ''
             })
           }
           setAllTopics(Array.from(merged.values()))
         } else if (!cancelled) {
-          setToast({ type: 'error', message: 'Failed to fetch topics. Showing examples.' })
+          setToast({ type: 'error', message: '获取话题失败，正在显示示例内容。' })
           setTimeout(() => setToast(null), 4000)
         }
       } catch (_) {
         if (!cancelled) {
-          setToast({ type: 'error', message: 'Failed to fetch topics. Showing examples.' })
+          setToast({ type: 'error', message: '获取话题失败，正在显示示例内容。' })
           setTimeout(() => setToast(null), 4000)
         }
       }
@@ -161,12 +161,12 @@ function App() {
 
     const email = signupEmail.trim()
     if (!email || !signupPassword) {
-      setSignupMessage('Please enter email and password.')
+      setSignupMessage('请输入邮箱和密码。')
       setSignupError(true)
       return
     }
     if (signupPassword !== signupConfirmPassword) {
-      setSignupMessage('Passwords do not match.')
+      setSignupMessage('两次输入的密码不一致。')
       setSignupError(true)
       return
     }
@@ -184,11 +184,11 @@ function App() {
         typeof res.data === 'string'
           ? res.data
           : ok
-          ? 'Account created. You can now log in.'
-          : (res.data as any)?.message || (res.data as any)?.error || 'Signup failed.'
+          ? '账号已创建，现在可以登录。'
+          : (res.data as any)?.message || (res.data as any)?.error || '注册失败。'
       setSignupMessage(msg)
       if (!ok) {
-        setToast({ type: 'error', message: msg || 'Signup failed.' })
+        setToast({ type: 'error', message: msg || '注册失败。' })
         setTimeout(() => setToast(null), 4000)
       }
       if (ok) {
@@ -200,8 +200,8 @@ function App() {
       }
     } catch (e) {
       setSignupError(true)
-      setSignupMessage('Network error while signing up.')
-      setToast({ type: 'error', message: 'Network error while signing up.' })
+      setSignupMessage('注册时发生网络错误。')
+      setToast({ type: 'error', message: '注册时发生网络错误。' })
       setTimeout(() => setToast(null), 4000)
     } finally {
       setSignupLoading(false)
@@ -215,7 +215,7 @@ function App() {
     const email = (fd.get('email') as string | null)?.trim() || ''
     const password = (fd.get('password') as string | null) || ''
     if (!email || !password) {
-      setToast({ type: 'error', message: 'Please enter email and password.' })
+      setToast({ type: 'error', message: '请输入邮箱和密码。' })
       setTimeout(() => setToast(null), 3000)
       return
     }
@@ -230,17 +230,17 @@ function App() {
         const msg =
           typeof res.data === 'string'
             ? res.data
-            : (res.data as any)?.message || (res.data as any)?.error || 'Login failed.'
+            : (res.data as any)?.message || (res.data as any)?.error || '登录失败。'
         setToast({ type: 'error', message: msg })
         setTimeout(() => setToast(null), 4000)
       } else {
         const payload = res.data as any
-        const username = payload?.user?.username ?? payload?.user?.email ?? 'there'
-        setToast({ type: 'success', message: `Welcome back, ${username}!` })
+        const username = payload?.user?.username ?? payload?.user?.email ?? '朋友'
+        setToast({ type: 'success', message: `欢迎回来，${username}！` })
         setTimeout(() => setToast(null), 3000)
       }
     } catch (_) {
-      setToast({ type: 'error', message: 'Network error while logging in.' })
+      setToast({ type: 'error', message: '登录时发生网络错误。' })
       setTimeout(() => setToast(null), 4000)
     }
   }
@@ -254,7 +254,7 @@ function App() {
           aria-live="polite"
         >
           <span className="toast__msg">{toast.message}</span>
-          <button className="toast__close" onClick={() => setToast(null)} aria-label="Dismiss notification">
+          <button className="toast__close" onClick={() => setToast(null)} aria-label="关闭通知">
             ×
           </button>
         </div>
@@ -262,34 +262,34 @@ function App() {
       <header className="top-bar">
         <button className="logo-button" onClick={goHome}>
           <span className="logo-mark">Φ</span>
-          <span className="logo-text">Philosophy Forum</span>
+          <span className="logo-text">哲学论坛</span>
         </button>
 
         <form className="search-form" onSubmit={handleSearchSubmit} role="search">
           <label className="visually-hidden" htmlFor="topic-search">
-            Search topics by ID or title
+            通过编号或标题搜索话题
           </label>
           <input
             id="topic-search"
             type="search"
-            placeholder="Search by topic ID or title"
+            placeholder="通过话题编号或标题搜索"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
-          <button type="submit">Search</button>
+          <button type="submit">搜索</button>
         </form>
 
         <button className="login-button" onClick={goToLogin}>
-          Log in
+          登录
         </button>
       </header>
 
       <main className="content" role="main">
         {view === 'home' && (
           <section className="topics" aria-labelledby="topics-heading">
-            <h1 id="topics-heading">Discussion topics</h1>
+            <h1 id="topics-heading">讨论话题</h1>
             <p className="topics-subtitle">
-              Explore questions from thinkers across the community and share your perspective.
+              探索社区思想者提出的问题，并分享你的见解。
             </p>
 
             <ul className="topic-list">
@@ -297,20 +297,20 @@ function App() {
                 <li key={topic.id} className="topic-card">
                   <div className="topic-card__meta">
                     <span className="topic-id">#{topic.id}</span>
-                    <span className="topic-author">By {topic.author}</span>
+                    <span className="topic-author">作者：{topic.author}</span>
                   </div>
                   <h2>{topic.title}</h2>
                   <p>{topic.description}</p>
                   <button onClick={() => openTopic(topic.id)} className="topic-card__button">
-                    Open discussion
+                    查看讨论
                   </button>
                 </li>
               ))}
 
               {filteredTopics.length === 0 && (
                 <li className="empty-state">
-                  <h2>No topics found</h2>
-                  <p>Try searching by a different title or topic number.</p>
+                  <h2>未找到相关话题</h2>
+                  <p>尝试使用不同的标题或编号进行搜索。</p>
                 </li>
               )}
             </ul>
@@ -320,12 +320,12 @@ function App() {
         {view === 'topic' && selectedTopic && (
           <article className="topic-detail" aria-labelledby="topic-title">
             <button className="back-link" onClick={goHome}>
-              ← Back to all topics
+              ← 返回所有话题
             </button>
             <header className="topic-detail__header">
-              <span className="topic-id detail-id">Topic #{selectedTopic.id}</span>
+              <span className="topic-id detail-id">话题 #{selectedTopic.id}</span>
               <h1 id="topic-title">{selectedTopic.title}</h1>
-              <p className="topic-author detail-author">Started by {selectedTopic.author}</p>
+              <p className="topic-author detail-author">发起人：{selectedTopic.author}</p>
             </header>
             <p className="topic-description">{selectedTopic.description}</p>
           </article>
@@ -333,36 +333,36 @@ function App() {
 
         {view === 'topic' && !selectedTopic && (
           <section className="empty-state">
-            <h2>Topic not found</h2>
-            <p>The topic you are looking for may have been removed.</p>
-            <button onClick={goHome}>Back to topics</button>
+            <h2>未找到该话题</h2>
+            <p>你要查看的话题可能已被删除。</p>
+            <button onClick={goHome}>返回话题列表</button>
           </section>
         )}
 
         {view === 'login' && (
           <section className="login-panel" aria-labelledby="login-heading">
-            <h1 id="login-heading">Welcome back</h1>
-            <p className="login-subtitle">Sign in to join the conversation.</p>
+            <h1 id="login-heading">欢迎回来</h1>
+            <p className="login-subtitle">登录以参与讨论。</p>
             <form className="login-form" onSubmit={handleLoginSubmit}>
-              <label htmlFor="email">Email</label>
+              <label htmlFor="email">邮箱</label>
               <input id="email" name="email" type="email" placeholder="you@example.com" />
 
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">密码</label>
               <input
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder="请输入密码"
               />
 
               <button type="submit" className="login-submit">
-                Sign in
+                登录
               </button>
             </form>
             <p className="signup-prompt" role="note">
-              New to the forum?
+              还没有账号？
               <button type="button" className="signup-button" onClick={goToSignup}>
-                Create an account
+                注册一个账号
               </button>
             </p>
           </section>
@@ -370,12 +370,12 @@ function App() {
 
         {view === 'signup' && (
           <section className="signup-panel" aria-labelledby="signup-heading">
-            <h1 id="signup-heading">Join the conversation</h1>
+            <h1 id="signup-heading">加入讨论</h1>
             <p className="signup-subtitle">
-              Create your forum account to start sharing ideas with fellow thinkers.
+              创建你的论坛账号，与思想伙伴分享观点。
             </p>
             <form className="signup-form" onSubmit={handleSignupSubmit}>
-              <label htmlFor="signup-email">Email</label>
+              <label htmlFor="signup-email">邮箱</label>
               <input
                 id="signup-email"
                 name="email"
@@ -387,24 +387,24 @@ function App() {
                 required
               />
 
-              <label htmlFor="signup-password">Password</label>
+              <label htmlFor="signup-password">密码</label>
               <input
                 id="signup-password"
                 name="password"
                 type="password"
-                placeholder="Create a password"
+                placeholder="请创建密码"
                 autoComplete="new-password"
                 value={signupPassword}
                 onChange={(e) => setSignupPassword(e.target.value)}
                 required
               />
 
-              <label htmlFor="signup-confirm-password">Confirm password</label>
+              <label htmlFor="signup-confirm-password">确认密码</label>
               <input
                 id="signup-confirm-password"
                 name="confirmPassword"
                 type="password"
-                placeholder="Re-enter your password"
+                placeholder="请再次输入密码"
                 autoComplete="new-password"
                 value={signupConfirmPassword}
                 onChange={(e) => setSignupConfirmPassword(e.target.value)}
@@ -412,7 +412,7 @@ function App() {
               />
 
               <button type="submit" className="signup-submit" disabled={signupLoading}>
-                {signupLoading ? 'Creating…' : 'Create account'}
+                {signupLoading ? '正在创建…' : '创建账号'}
               </button>
 
               {signupMessage && (
@@ -423,9 +423,9 @@ function App() {
             </form>
 
             <p className="login-prompt" role="note">
-              Already have an account?
+              已经拥有账号？
               <button type="button" className="login-link" onClick={goToLogin}>
-                Sign in
+                前往登录
               </button>
             </p>
           </section>
