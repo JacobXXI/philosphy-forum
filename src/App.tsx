@@ -47,7 +47,7 @@ const exampleTopics: Topic[] = [
   }
 ]
 
-type View = 'home' | 'topic' | 'login' | 'signup'
+type View = 'home' | 'topic' | 'login' | 'signup' | 'profile'
 
 function App() {
   const [view, setView] = useState<View>('home')
@@ -142,9 +142,17 @@ function App() {
     setSelectedTopicId(null)
   }
 
+  const goToProfile = () => {
+    if (!currentUser) {
+      setView('login')
+      return
+    }
+    setView('profile')
+  }
+
   const goToLogin = () => {
     if (currentUser) {
-      goHome()
+      goToProfile()
       return
     }
     setView('login')
@@ -152,6 +160,13 @@ function App() {
 
   const goToSignup = () => {
     setView('signup')
+  }
+
+  const handleLogout = () => {
+    setCurrentUser(null)
+    goHome()
+    setToast({ type: 'success', message: '你已成功退出登录。' })
+    setTimeout(() => setToast(null), 3000)
   }
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -259,8 +274,11 @@ function App() {
   const userInitial = useMemo(() => {
     if (!currentUser) return null
     const trimmed = currentUser.name?.trim()
-    if (!trimmed) return null
-    return trimmed.charAt(0).toUpperCase()
+    if (trimmed) {
+      return trimmed.charAt(0).toUpperCase()
+    }
+    const emailInitial = currentUser.email?.trim().charAt(0)
+    return emailInitial ? emailInitial.toUpperCase() : null
   }, [currentUser])
 
   return (
@@ -298,7 +316,7 @@ function App() {
         </form>
 
         {currentUser ? (
-          <button className="profile-chip" type="button" onClick={goHome} aria-label="前往首页">
+          <button className="profile-chip" type="button" onClick={goToProfile} aria-label="前往个人资料">
             <span className="profile-chip__initial" aria-hidden="true">
               {userInitial ?? '访'}
             </span>
@@ -455,6 +473,40 @@ function App() {
                 前往登录
               </button>
             </p>
+          </section>
+        )}
+
+        {view === 'profile' && currentUser && (
+          <section className="profile-panel" aria-labelledby="profile-heading">
+            <header className="profile-header">
+              <div className="profile-avatar" aria-hidden="true">
+                {userInitial ?? (currentUser.email?.charAt(0).toUpperCase() || '访')}
+              </div>
+              <div>
+                <h1 id="profile-heading">个人资料</h1>
+                <p className="profile-subtitle">查看你的账号信息并管理登录状态。</p>
+              </div>
+            </header>
+
+            <dl className="profile-info">
+              <div className="profile-info__row">
+                <dt>用户名</dt>
+                <dd>{currentUser.name}</dd>
+              </div>
+              <div className="profile-info__row">
+                <dt>邮箱</dt>
+                <dd>{currentUser.email}</dd>
+              </div>
+            </dl>
+
+            <div className="profile-actions">
+              <button type="button" className="profile-home" onClick={goHome}>
+                返回首页
+              </button>
+              <button type="button" className="profile-logout" onClick={handleLogout}>
+                退出登录
+              </button>
+            </div>
           </section>
         )}
       </main>
