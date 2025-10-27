@@ -41,6 +41,9 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
         ) : (
           <p className="no-comments">目前还没有评论，成为第一个分享想法的人吧。</p>
         )}
+        <button type="button" className="respond-button" aria-label="回应这个话题">
+          发表回应
+        </button>
       </section>
     </article>
   )

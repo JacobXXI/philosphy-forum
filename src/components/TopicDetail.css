@@ -97,6 +97,35 @@
   color: #64748b;
 }
 
+.respond-button {
+  align-self: flex-start;
+  background: #4338ca;
+  color: #ffffff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 8px 20px rgba(67, 56, 202, 0.25);
+}
+
+.respond-button:hover,
+.respond-button:focus-visible {
+  background: #312e81;
+  transform: translateY(-1px);
+}
+
+.respond-button:focus-visible {
+  outline: 3px solid rgba(67, 56, 202, 0.35);
+  outline-offset: 3px;
+}
+
+.respond-button:active {
+  transform: translateY(0);
+}
+
 .back-link {
   align-self: flex-start;
   background: none;
