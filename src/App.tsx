@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopics, signup, login, TopicsResponse } from './request'
+import { fetchTopics, signup, login, updateUser, TopicsResponse } from './request'
 
 type Topic = {
   id: number
@@ -67,6 +67,7 @@ function App() {
   const [settingsName, setSettingsName] = useState('')
   const [settingsPassword, setSettingsPassword] = useState('')
   const [settingsConfirmPassword, setSettingsConfirmPassword] = useState('')
+  const [settingsLoading, setSettingsLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -170,6 +171,7 @@ function App() {
       setView('login')
       return
     }
+    setSettingsLoading(false)
     setSettingsName(currentUser.name ?? '')
     setSettingsPassword('')
     setSettingsConfirmPassword('')
@@ -285,8 +287,14 @@ function App() {
     }
   }
 
-  const handleAccountSettingsSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAccountSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!currentUser) {
+      setToast({ type: 'error', message: '请先登录。' })
+      setTimeout(() => setToast(null), 4000)
+      return
+    }
+
     const trimmedName = settingsName.trim()
     if (!trimmedName) {
       setToast({ type: 'error', message: '用户名不能为空。' })
@@ -302,15 +310,53 @@ function App() {
       }
     }
 
-    setCurrentUser((prev) => (prev ? { ...prev, name: trimmedName } : prev))
+    setSettingsLoading(true)
+    try {
+      const payload: { email: string; username: string; password?: string } = {
+        email: currentUser.email,
+        username: trimmedName
+      }
+      if (settingsPassword) {
+        payload.password = settingsPassword
+      }
 
-    const message =
-      settingsPassword || settingsConfirmPassword
+      const res = await updateUser(payload)
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.status === 'ok'
+
+      if (!ok) {
+        const message =
+          typeof res.data === 'string'
+            ? res.data
+            : (res.data as any)?.message || (res.data as any)?.error || '更新失败。'
+        setToast({ type: 'error', message })
+        setTimeout(() => setToast(null), 4000)
+        return
+      }
+
+      const payloadUser = (res.data as any)?.user
+      const updatedName = payloadUser?.username ?? trimmedName
+      const updatedEmail = payloadUser?.email ?? currentUser.email
+      setCurrentUser({ name: updatedName, email: updatedEmail })
+      setSettingsName(updatedName)
+      setSettingsPassword('')
+      setSettingsConfirmPassword('')
+
+      const successMessage = payload.password
         ? '用户名和密码更新成功。'
         : '用户名更新成功。'
-    setToast({ type: 'success', message })
-    setTimeout(() => setToast(null), 3000)
-    setView('profile')
+      setToast({ type: 'success', message: successMessage })
+      setTimeout(() => setToast(null), 3000)
+      setView('profile')
+    } catch (_) {
+      setToast({ type: 'error', message: '更新账号信息时发生网络错误。' })
+      setTimeout(() => setToast(null), 4000)
+    } finally {
+      setSettingsLoading(false)
+    }
   }
 
   const userInitial = useMemo(() => {
@@ -601,8 +647,12 @@ function App() {
                 <button type="button" className="account-settings-cancel" onClick={goToProfile}>
                   取消
                 </button>
-                <button type="submit" className="account-settings-submit">
-                  保存修改
+                <button
+                  type="submit"
+                  className="account-settings-submit"
+                  disabled={settingsLoading}
+                >
+                  {settingsLoading ? '保存中…' : '保存修改'}
                 </button>
               </div>
             </form>
