@@ -55,6 +55,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
   const [toast, setToast] = useState<{ type: 'error' | 'success' | 'info'; message: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
 
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('')
@@ -142,6 +143,10 @@ function App() {
   }
 
   const goToLogin = () => {
+    if (currentUser) {
+      goHome()
+      return
+    }
     setView('login')
   }
 
@@ -235,15 +240,28 @@ function App() {
         setTimeout(() => setToast(null), 4000)
       } else {
         const payload = res.data as any
-        const username = payload?.user?.username ?? payload?.user?.email ?? '朋友'
+        const username = payload?.user?.username ?? payload?.user?.email ?? email ?? '朋友'
+        const userEmail = payload?.user?.email ?? email
         setToast({ type: 'success', message: `欢迎回来，${username}！` })
         setTimeout(() => setToast(null), 3000)
+        setCurrentUser({
+          name: username,
+          email: userEmail
+        })
+        goHome()
       }
     } catch (_) {
       setToast({ type: 'error', message: '登录时发生网络错误。' })
       setTimeout(() => setToast(null), 4000)
     }
   }
+
+  const userInitial = useMemo(() => {
+    if (!currentUser) return null
+    const trimmed = currentUser.name?.trim()
+    if (!trimmed) return null
+    return trimmed.charAt(0).toUpperCase()
+  }, [currentUser])
 
   return (
     <div className="app">
@@ -279,9 +297,18 @@ function App() {
           <button type="submit">搜索</button>
         </form>
 
-        <button className="login-button" onClick={goToLogin}>
-          登录
-        </button>
+        {currentUser ? (
+          <button className="profile-chip" type="button" onClick={goHome} aria-label="前往首页">
+            <span className="profile-chip__initial" aria-hidden="true">
+              {userInitial ?? '访'}
+            </span>
+            <span className="profile-chip__name">{currentUser.name}</span>
+          </button>
+        ) : (
+          <button className="login-button" onClick={goToLogin}>
+            登录
+          </button>
+        )}
       </header>
 
       <main className="content" role="main">
