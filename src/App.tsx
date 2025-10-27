@@ -61,7 +61,8 @@ function App() {
               id: item.id,
               title: item.title ?? fallback?.title ?? `话题 ${item.id}`,
               author: item.author ?? fallback?.author ?? '未知',
-              description: fallback?.description ?? ''
+              description: fallback?.description ?? '',
+              comments: fallback?.comments ?? []
             }
           })
 
@@ -74,7 +75,8 @@ function App() {
               id: api.id,
               title: api.title ?? existing?.title ?? `话题 ${api.id}`,
               author: api.author ?? existing?.author ?? '未知',
-              description: api.description ?? existing?.description ?? ''
+              description: api.description ?? existing?.description ?? '',
+              comments: existing?.comments ?? api.comments ?? []
             })
           }
           setAllTopics(Array.from(merged.values()))
