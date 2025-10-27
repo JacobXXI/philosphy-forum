@@ -340,7 +340,7 @@ function App() {
         userInitial={userInitial}
       />
 
-      <main className="content" role="main">
+      <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
         {view === 'home' && <TopicsView topics={filteredTopics} onSelect={openTopic} />}
 
         {view === 'topic' && selectedTopic && <TopicDetail topic={selectedTopic} onBack={goHome} />}
