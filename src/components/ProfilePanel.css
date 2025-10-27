@@ -1,0 +1,115 @@
+.profile-panel {
+  width: min(520px, 100%);
+  background: #ffffff;
+  padding: 3rem;
+  border-radius: 1.35rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.profile-avatar {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4338ca, #1d4ed8);
+  color: #f8fafc;
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 30px rgba(67, 56, 202, 0.25);
+}
+
+.profile-subtitle {
+  margin: 0.25rem 0 0;
+  color: #52606d;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.profile-info__row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.profile-info__row dt {
+  font-weight: 600;
+  color: #364152;
+}
+
+.profile-info__row dd {
+  margin: 0;
+  color: #1f2933;
+  word-break: break-word;
+}
+
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.profile-settings,
+.profile-home,
+.profile-logout {
+  flex: 1;
+  min-width: 140px;
+  padding: 0.8rem 1rem;
+  border-radius: 0.85rem;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-settings {
+  background: #fbbf24;
+  color: #78350f;
+}
+
+.profile-settings:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(251, 191, 36, 0.25);
+}
+
+.profile-home {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.profile-home:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(67, 56, 202, 0.15);
+}
+
+.profile-logout {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fdf2f8;
+}
+
+.profile-logout:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(185, 28, 28, 0.25);
+}
+
+@media (max-width: 768px) {
+  .profile-panel {
+    padding: 2.5rem 1.75rem;
+  }
+}
