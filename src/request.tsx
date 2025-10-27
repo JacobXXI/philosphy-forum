@@ -68,6 +68,26 @@ export async function login(input: LoginInput): Promise<ApiResult<LoginResponse 
   })
 }
 
+export type UpdateUserInput = {
+  email: string
+  username?: string
+  password?: string
+}
+
+export type UpdateUserResponse = {
+  status: 'ok'
+  user: UserAccount
+}
+
+export async function updateUser(
+  input: UpdateUserInput
+): Promise<ApiResult<UpdateUserResponse | string>> {
+  return jsonFetch<UpdateUserResponse | string>('/users/update', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  })
+}
+
 export type TopicSummary = {
   id: number
   title: string

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopics, signup, login, TopicsResponse } from './request'
+import { fetchTopics, signup, login, updateUser, TopicsResponse } from './request'
 
 type Topic = {
   id: number
@@ -47,7 +47,7 @@ const exampleTopics: Topic[] = [
   }
 ]
 
-type View = 'home' | 'topic' | 'login' | 'signup'
+type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings'
 
 function App() {
   const [view, setView] = useState<View>('home')
@@ -55,6 +55,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
   const [toast, setToast] = useState<{ type: 'error' | 'success' | 'info'; message: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
 
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('')
@@ -63,6 +64,10 @@ function App() {
   const [signupLoading, setSignupLoading] = useState(false)
   const [signupMessage, setSignupMessage] = useState<string | null>(null)
   const [signupError, setSignupError] = useState(false)
+  const [settingsName, setSettingsName] = useState('')
+  const [settingsPassword, setSettingsPassword] = useState('')
+  const [settingsConfirmPassword, setSettingsConfirmPassword] = useState('')
+  const [settingsLoading, setSettingsLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -141,12 +146,43 @@ function App() {
     setSelectedTopicId(null)
   }
 
+  const goToProfile = () => {
+    if (!currentUser) {
+      setView('login')
+      return
+    }
+    setView('profile')
+  }
+
   const goToLogin = () => {
+    if (currentUser) {
+      goToProfile()
+      return
+    }
     setView('login')
   }
 
   const goToSignup = () => {
     setView('signup')
+  }
+
+  const goToAccountSettings = () => {
+    if (!currentUser) {
+      setView('login')
+      return
+    }
+    setSettingsLoading(false)
+    setSettingsName(currentUser.name ?? '')
+    setSettingsPassword('')
+    setSettingsConfirmPassword('')
+    setView('settings')
+  }
+
+  const handleLogout = () => {
+    setCurrentUser(null)
+    goHome()
+    setToast({ type: 'success', message: '你已成功退出登录。' })
+    setTimeout(() => setToast(null), 3000)
   }
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -235,15 +271,103 @@ function App() {
         setTimeout(() => setToast(null), 4000)
       } else {
         const payload = res.data as any
-        const username = payload?.user?.username ?? payload?.user?.email ?? '朋友'
+        const username = payload?.user?.username ?? payload?.user?.email ?? email ?? '朋友'
+        const userEmail = payload?.user?.email ?? email
         setToast({ type: 'success', message: `欢迎回来，${username}！` })
         setTimeout(() => setToast(null), 3000)
+        setCurrentUser({
+          name: username,
+          email: userEmail
+        })
+        goHome()
       }
     } catch (_) {
       setToast({ type: 'error', message: '登录时发生网络错误。' })
       setTimeout(() => setToast(null), 4000)
     }
   }
+
+  const handleAccountSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentUser) {
+      setToast({ type: 'error', message: '请先登录。' })
+      setTimeout(() => setToast(null), 4000)
+      return
+    }
+
+    const trimmedName = settingsName.trim()
+    if (!trimmedName) {
+      setToast({ type: 'error', message: '用户名不能为空。' })
+      setTimeout(() => setToast(null), 4000)
+      return
+    }
+
+    if (settingsPassword || settingsConfirmPassword) {
+      if (settingsPassword !== settingsConfirmPassword) {
+        setToast({ type: 'error', message: '两次输入的密码不一致。' })
+        setTimeout(() => setToast(null), 4000)
+        return
+      }
+    }
+
+    setSettingsLoading(true)
+    try {
+      const payload: { email: string; username: string; password?: string } = {
+        email: currentUser.email,
+        username: trimmedName
+      }
+      if (settingsPassword) {
+        payload.password = settingsPassword
+      }
+
+      const res = await updateUser(payload)
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.status === 'ok'
+
+      if (!ok) {
+        const message =
+          typeof res.data === 'string'
+            ? res.data
+            : (res.data as any)?.message || (res.data as any)?.error || '更新失败。'
+        setToast({ type: 'error', message })
+        setTimeout(() => setToast(null), 4000)
+        return
+      }
+
+      const payloadUser = (res.data as any)?.user
+      const updatedName = payloadUser?.username ?? trimmedName
+      const updatedEmail = payloadUser?.email ?? currentUser.email
+      setCurrentUser({ name: updatedName, email: updatedEmail })
+      setSettingsName(updatedName)
+      setSettingsPassword('')
+      setSettingsConfirmPassword('')
+
+      const successMessage = payload.password
+        ? '用户名和密码更新成功。'
+        : '用户名更新成功。'
+      setToast({ type: 'success', message: successMessage })
+      setTimeout(() => setToast(null), 3000)
+      setView('profile')
+    } catch (_) {
+      setToast({ type: 'error', message: '更新账号信息时发生网络错误。' })
+      setTimeout(() => setToast(null), 4000)
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
+  const userInitial = useMemo(() => {
+    if (!currentUser) return null
+    const trimmed = currentUser.name?.trim()
+    if (trimmed) {
+      return trimmed.charAt(0).toUpperCase()
+    }
+    const emailInitial = currentUser.email?.trim().charAt(0)
+    return emailInitial ? emailInitial.toUpperCase() : null
+  }, [currentUser])
 
   return (
     <div className="app">
@@ -279,9 +403,18 @@ function App() {
           <button type="submit">搜索</button>
         </form>
 
-        <button className="login-button" onClick={goToLogin}>
-          登录
-        </button>
+        {currentUser ? (
+          <button className="profile-chip" type="button" onClick={goToProfile} aria-label="前往个人资料">
+            <span className="profile-chip__initial" aria-hidden="true">
+              {userInitial ?? '访'}
+            </span>
+            <span className="profile-chip__name">{currentUser.name}</span>
+          </button>
+        ) : (
+          <button className="login-button" onClick={goToLogin}>
+            登录
+          </button>
+        )}
       </header>
 
       <main className="content" role="main">
@@ -428,6 +561,101 @@ function App() {
                 前往登录
               </button>
             </p>
+          </section>
+        )}
+
+        {view === 'profile' && currentUser && (
+          <section className="profile-panel" aria-labelledby="profile-heading">
+            <header className="profile-header">
+              <div className="profile-avatar" aria-hidden="true">
+                {userInitial ?? (currentUser.email?.charAt(0).toUpperCase() || '访')}
+              </div>
+              <div>
+                <h1 id="profile-heading">个人资料</h1>
+                <p className="profile-subtitle">查看你的账号信息并管理登录状态。</p>
+              </div>
+            </header>
+
+            <dl className="profile-info">
+              <div className="profile-info__row">
+                <dt>用户名</dt>
+                <dd>{currentUser.name}</dd>
+              </div>
+              <div className="profile-info__row">
+                <dt>邮箱</dt>
+                <dd>{currentUser.email}</dd>
+              </div>
+            </dl>
+
+            <div className="profile-actions">
+              <button type="button" className="profile-settings" onClick={goToAccountSettings}>
+                修改用户名或密码
+              </button>
+              <button type="button" className="profile-home" onClick={goHome}>
+                返回首页
+              </button>
+              <button type="button" className="profile-logout" onClick={handleLogout}>
+                退出登录
+              </button>
+            </div>
+          </section>
+        )}
+
+        {view === 'settings' && currentUser && (
+          <section className="account-settings-panel" aria-labelledby="settings-heading">
+            <button type="button" className="back-link" onClick={goToProfile}>
+              ← 返回个人资料
+            </button>
+            <h1 id="settings-heading">更新账号信息</h1>
+            <p className="account-settings-subtitle">修改显示名称或更新你的登录密码。</p>
+
+            <form className="account-settings-form" onSubmit={handleAccountSettingsSubmit}>
+              <label htmlFor="settings-name">用户名</label>
+              <input
+                id="settings-name"
+                name="name"
+                type="text"
+                value={settingsName}
+                onChange={(event) => setSettingsName(event.target.value)}
+                placeholder="请输入新的用户名"
+                required
+              />
+
+              <label htmlFor="settings-password">新密码</label>
+              <input
+                id="settings-password"
+                name="password"
+                type="password"
+                value={settingsPassword}
+                onChange={(event) => setSettingsPassword(event.target.value)}
+                placeholder="不修改则留空"
+                autoComplete="new-password"
+              />
+
+              <label htmlFor="settings-confirm-password">确认新密码</label>
+              <input
+                id="settings-confirm-password"
+                name="confirmPassword"
+                type="password"
+                value={settingsConfirmPassword}
+                onChange={(event) => setSettingsConfirmPassword(event.target.value)}
+                placeholder="请再次输入新密码"
+                autoComplete="new-password"
+              />
+
+              <div className="account-settings-actions">
+                <button type="button" className="account-settings-cancel" onClick={goToProfile}>
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="account-settings-submit"
+                  disabled={settingsLoading}
+                >
+                  {settingsLoading ? '保存中…' : '保存修改'}
+                </button>
+              </div>
+            </form>
           </section>
         )}
       </main>
