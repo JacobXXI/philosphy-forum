@@ -299,6 +299,11 @@ function App() {
     setSelectedTopicId(null)
   }
 
+  const handleHomeClick = () => {
+    setSearchTerm('')
+    goHome()
+  }
+
   const goToProfile = () => {
     if (!currentUser) {
       setView('login')
@@ -523,7 +528,7 @@ function App() {
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
       <TopBar
-        onHome={goHome}
+        onHome={handleHomeClick}
         onLogin={goToLogin}
         onProfile={goToProfile}
         onSearchSubmit={handleSearchSubmit}
