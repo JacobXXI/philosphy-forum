@@ -144,6 +144,32 @@ export async function fetchTopics(): Promise<ApiResult<TopicsResponse | string>>
 
 type ApiMessage = { message?: string; error?: string }
 
+export type TopicDetailComment = {
+  id: number
+  topic_id?: number
+  author?: string
+  content?: string
+  body?: string
+  created_at?: string
+  createdAt?: string
+}
+
+export type TopicDetailResponse = {
+  id: number
+  author?: string
+  title?: string
+  description?: string
+  closed?: boolean
+  likes?: number
+  comments?: TopicDetailComment[]
+}
+
+export async function fetchTopicDetail(
+  topicId: number
+): Promise<ApiResult<TopicDetailResponse | ApiMessage | string>> {
+  return jsonFetch<TopicDetailResponse | ApiMessage | string>(`/topic/${topicId}`)
+}
+
 export type CreateCommentResponse = {
   id: number
   author?: string

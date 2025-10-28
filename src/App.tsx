@@ -1,6 +1,15 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopics, signup, login, updateUser, TopicsResponse, setAuthToken } from './request'
+import {
+  fetchTopics,
+  signup,
+  login,
+  updateUser,
+  TopicsResponse,
+  setAuthToken,
+  fetchTopicDetail,
+  TopicDetailResponse
+} from './request'
 import { exampleTopics } from './data/exampleTopics'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -108,6 +117,97 @@ function App() {
 
   const selectedTopic =
     selectedTopicId == null ? null : allTopics.find((topic) => topic.id === selectedTopicId) ?? null
+
+  useEffect(() => {
+    if (selectedTopicId == null) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadTopicDetail = async (topicId: number) => {
+      try {
+        const result = await fetchTopicDetail(topicId)
+        if (cancelled) {
+          return
+        }
+
+        if (result.status === 200 && result.data && typeof result.data !== 'string') {
+          const detail = result.data as TopicDetailResponse
+
+          setAllTopics((prevTopics) => {
+            const fallbackTopic =
+              prevTopics.find((topic) => topic.id === detail.id) ??
+              exampleTopics.find((topic) => topic.id === detail.id) ??
+              null
+
+            const fallbackComments: Topic['comments'] = fallbackTopic?.comments ?? []
+
+            const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
+              ? detail.comments.map((comment, index): Topic['comments'][number] => {
+                  const backup = fallbackComments[index]
+                  const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
+                  const commentCreatedAt =
+                    comment.created_at ??
+                    comment.createdAt ??
+                    backup?.createdAt ??
+                    new Date().toISOString()
+
+                  return {
+                    id: comment.id ?? backup?.id ?? index,
+                    author: comment.author ?? backup?.author ?? '匿名用户',
+                    body: commentBody,
+                    createdAt: commentCreatedAt
+                  }
+                })
+              : fallbackComments
+
+            const updatedTopic: Topic = {
+              id: detail.id,
+              title: detail.title ?? fallbackTopic?.title ?? `话题 ${detail.id}`,
+              author: detail.author ?? fallbackTopic?.author ?? '未知',
+              description: detail.description ?? fallbackTopic?.description ?? '',
+              comments: mappedComments
+            }
+
+            let found = false
+            const nextTopics = prevTopics.map((topic) => {
+              if (topic.id === updatedTopic.id) {
+                found = true
+                return updatedTopic
+              }
+              return topic
+            })
+
+            if (!found) {
+              return [...nextTopics, updatedTopic]
+            }
+
+            return nextTopics
+          })
+          return
+        }
+
+        if (result.status === 404) {
+          showToast({ type: 'error', message: '未找到该话题。' })
+          setAllTopics((prevTopics) => prevTopics.filter((topic) => topic.id !== topicId))
+          return
+        }
+
+        showToast({ type: 'error', message: '加载话题详情时出错。' })
+      } catch (_) {
+        if (!cancelled) {
+          showToast({ type: 'error', message: '加载话题详情时出错。' })
+        }
+      }
+    }
+
+    loadTopicDetail(selectedTopicId)
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTopicId, showToast])
 
   const openTopic = (topicId: number) => {
     setSelectedTopicId(topicId)
