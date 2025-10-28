@@ -6,6 +6,8 @@ type TopBarProps = {
   onHome: () => void
   onLogin: () => void
   onProfile: () => void
+  onCreateTopic: () => void
+  canCreateTopic: boolean
   onSearchSubmit: (event: FormEvent<HTMLFormElement>) => void
   onSearchTermChange: (value: string) => void
   searchTerm: string
@@ -17,6 +19,8 @@ export function TopBar({
   onHome,
   onLogin,
   onProfile,
+  onCreateTopic,
+  canCreateTopic,
   onSearchSubmit,
   onSearchTermChange,
   searchTerm,
@@ -44,18 +48,30 @@ export function TopBar({
         <button type="submit">搜索</button>
       </form>
 
-      {currentUser ? (
-        <button className="profile-chip" type="button" onClick={onProfile} aria-label="前往个人资料">
-          <span className="profile-chip__initial" aria-hidden="true">
-            {userInitial ?? '访'}
-          </span>
-          <span className="profile-chip__name">{currentUser.name}</span>
+      <div className="top-bar__actions">
+        <button
+          className="create-topic-button"
+          type="button"
+          onClick={onCreateTopic}
+          aria-label="发起新的讨论话题"
+          aria-disabled={!canCreateTopic}
+        >
+          创建话题
         </button>
-      ) : (
-        <button className="login-button" onClick={onLogin}>
-          登录
-        </button>
-      )}
+
+        {currentUser ? (
+          <button className="profile-chip" type="button" onClick={onProfile} aria-label="前往个人资料">
+            <span className="profile-chip__initial" aria-hidden="true">
+              {userInitial ?? '访'}
+            </span>
+            <span className="profile-chip__name">{currentUser.name}</span>
+          </button>
+        ) : (
+          <button className="login-button" onClick={onLogin}>
+            登录
+          </button>
+        )}
+      </div>
     </header>
   )
 }

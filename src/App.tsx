@@ -9,7 +9,8 @@ import {
   setAuthToken,
   getAuthToken,
   fetchTopicDetail,
-  TopicDetailResponse
+  TopicDetailResponse,
+  createTopic
 } from './request'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -21,6 +22,7 @@ import { LoginPanel } from './components/LoginPanel'
 import { SignupPanel } from './components/SignupPanel'
 import { ProfilePanel } from './components/ProfilePanel'
 import { AccountSettingsPanel } from './components/AccountSettingsPanel'
+import { CreateTopicPanel } from './components/CreateTopicPanel'
 
 const USER_STORAGE_KEY = 'philosophy-forum.current-user'
 const DEFAULT_USER_NAME = '已登录用户'
@@ -86,7 +88,7 @@ function createFallbackUser(): UserProfile {
   return { name: DEFAULT_USER_NAME, email: '' }
 }
 
-type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings'
+type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings' | 'create-topic'
 
 type ToastState = ToastMessage | null
 
@@ -124,6 +126,10 @@ function App() {
   const [settingsPassword, setSettingsPassword] = useState('')
   const [settingsConfirmPassword, setSettingsConfirmPassword] = useState('')
   const [settingsLoading, setSettingsLoading] = useState(false)
+  const [createTopicTitle, setCreateTopicTitle] = useState('')
+  const [createTopicDescription, setCreateTopicDescription] = useState('')
+  const [createTopicLoading, setCreateTopicLoading] = useState(false)
+  const [createTopicError, setCreateTopicError] = useState<string | null>(null)
 
   const showToast = useCallback((nextToast: ToastMessage, duration = 4000) => {
     setToast(nextToast)
@@ -298,6 +304,19 @@ function App() {
       return
     }
     setView('login')
+  }
+
+  const goToCreateTopic = () => {
+    if (!currentUser) {
+      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setView('login')
+      return
+    }
+    setCreateTopicTitle('')
+    setCreateTopicDescription('')
+    setCreateTopicError(null)
+    setCreateTopicLoading(false)
+    setView('create-topic')
   }
 
   const goToSignup = () => {
@@ -503,6 +522,79 @@ function App() {
     return emailInitial ? emailInitial.toUpperCase() : null
   }, [currentUser])
 
+  const handleCreateTopicSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentUser) {
+      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setView('login')
+      return
+    }
+
+    const trimmedTitle = createTopicTitle.trim()
+    const trimmedDescription = createTopicDescription.trim()
+
+    if (!trimmedTitle || !trimmedDescription) {
+      setCreateTopicError('请填写完整的话题信息。')
+      return
+    }
+
+    setCreateTopicLoading(true)
+    setCreateTopicError(null)
+
+    try {
+      const res = await createTopic({ title: trimmedTitle, description: trimmedDescription })
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.id != null
+
+      if (!ok) {
+        const message =
+          typeof res.data === 'string'
+            ? res.data
+            : (res.data as any)?.message || (res.data as any)?.error || '发布话题失败。'
+        setCreateTopicError(message)
+        showToast({ type: 'error', message })
+        return
+      }
+
+      const payload = res.data as any
+      const newTopic: Topic = {
+        id: payload?.id ?? Date.now(),
+        title: payload?.title ?? trimmedTitle,
+        author: payload?.author ?? currentUser.name ?? '我',
+        description: payload?.description ?? trimmedDescription,
+        comments: []
+      }
+
+      setAllTopics((prevTopics) => {
+        const filtered = prevTopics.filter((topic) => topic.id !== newTopic.id)
+        return [newTopic, ...filtered]
+      })
+
+      showToast({ type: 'success', message: '话题发布成功！' }, 3000)
+
+      setCreateTopicTitle('')
+      setCreateTopicDescription('')
+      setView('topic')
+      setSelectedTopicId(newTopic.id)
+    } catch (_) {
+      const message = '发布话题时发生网络错误。'
+      setCreateTopicError(message)
+      showToast({ type: 'error', message })
+    } finally {
+      setCreateTopicLoading(false)
+    }
+  }
+
+  const handleCancelCreateTopic = () => {
+    setCreateTopicTitle('')
+    setCreateTopicDescription('')
+    setCreateTopicError(null)
+    goHome()
+  }
+
   return (
     <div className="app">
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
@@ -511,11 +603,13 @@ function App() {
         onHome={handleHomeClick}
         onLogin={goToLogin}
         onProfile={goToProfile}
+        onCreateTopic={goToCreateTopic}
         onSearchSubmit={handleSearchSubmit}
         onSearchTermChange={setSearchTerm}
         searchTerm={searchTerm}
         currentUser={currentUser}
         userInitial={userInitial}
+        canCreateTopic={Boolean(currentUser)}
       />
 
       <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
@@ -565,6 +659,23 @@ function App() {
             onSubmit={handleAccountSettingsSubmit}
             onBack={goToProfile}
           />
+        )}
+
+        {view === 'create-topic' && currentUser && (
+          <CreateTopicPanel
+            title={createTopicTitle}
+            description={createTopicDescription}
+            loading={createTopicLoading}
+            error={createTopicError}
+            onTitleChange={setCreateTopicTitle}
+            onDescriptionChange={setCreateTopicDescription}
+            onSubmit={handleCreateTopicSubmit}
+            onCancel={handleCancelCreateTopic}
+          />
+        )}
+
+        {view === 'create-topic' && !currentUser && (
+          <LoginPanel onSubmit={handleLoginSubmit} onSignup={goToSignup} />
         )}
       </main>
     </div>
