@@ -2,14 +2,24 @@ const BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL ?? 'http://127.0.0
 
 export type ApiResult<T> = { status: number; data: T | undefined }
 
+let authToken: string | null = null
+
+export function setAuthToken(token: string | null) {
+  authToken = token
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   const hasBody = Boolean(init?.body)
+  const headers = new Headers(init?.headers ?? undefined)
+  if (hasBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (authToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${authToken}`)
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     credentials: 'include',
-    headers: {
-      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.headers || {})
-    },
+    headers,
     ...init
   })
 

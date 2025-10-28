@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopics, signup, login, updateUser, TopicsResponse } from './request'
+import { fetchTopics, signup, login, updateUser, TopicsResponse, setAuthToken } from './request'
 import { exampleTopics } from './data/exampleTopics'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -152,6 +152,7 @@ function App() {
   }
 
   const handleLogout = () => {
+    setAuthToken(null)
     setCurrentUser(null)
     goHome()
     showToast({ type: 'success', message: '你已成功退出登录。' }, 3000)
@@ -235,11 +236,14 @@ function App() {
             ? res.data
             : (res.data as any)?.message || (res.data as any)?.error || '登录失败。'
         showToast({ type: 'error', message: msg })
+        setAuthToken(null)
       } else {
         const payload = res.data as any
         const username = payload?.user?.username ?? payload?.user?.email ?? email ?? '朋友'
         const userEmail = payload?.user?.email ?? email
+        const sessionId = payload?.session_id ?? null
         showToast({ type: 'success', message: `欢迎回来，${username}！` }, 3000)
+        setAuthToken(sessionId)
         setCurrentUser({
           name: username,
           email: userEmail
