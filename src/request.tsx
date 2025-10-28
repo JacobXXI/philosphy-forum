@@ -1,5 +1,6 @@
 const BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000'
 const AUTH_STORAGE_KEY = 'philosophy-forum.session-token'
+const SESSION_COOKIE_NAME = 'session_id'
 
 export type ApiResult<T> = { status: number; data: T | undefined }
 
@@ -9,6 +10,36 @@ const browserStorage =
     : null
 
 let authToken: string | null = browserStorage?.getItem(AUTH_STORAGE_KEY) ?? null
+
+function readSessionCookie() {
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  const cookieSource = document.cookie
+  if (!cookieSource) {
+    return null
+  }
+
+  const segments = cookieSource.split(';')
+  for (const segment of segments) {
+    const [rawName, ...rawValue] = segment.trim().split('=')
+    if (!rawName || rawName !== SESSION_COOKIE_NAME) {
+      continue
+    }
+    const value = rawValue.join('=')
+    return value ? decodeURIComponent(value) : null
+  }
+
+  return null
+}
+
+if (!authToken) {
+  const cookieToken = readSessionCookie()
+  if (cookieToken) {
+    authToken = cookieToken.trim() || null
+  }
+}
 
 function persistAuthToken(token: string | null) {
   if (!browserStorage) return
@@ -29,6 +60,10 @@ function normaliseAuthHeader(token: string) {
 export function setAuthToken(token: string | null) {
   authToken = token?.trim() || null
   persistAuthToken(authToken)
+}
+
+export function getAuthToken(): string | null {
+  return authToken
 }
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
