@@ -15,6 +15,11 @@
   justify-content: center;
 }
 
+.content--topic {
+  width: 75vw;
+  max-width: none;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

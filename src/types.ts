@@ -1,8 +1,16 @@
+export type Comment = {
+  id: number
+  author: string
+  body: string
+  createdAt: string
+}
+
 export type Topic = {
   id: number
   title: string
   author: string
   description: string
+  comments: Comment[]
 }
 
 export type ToastMessage = {

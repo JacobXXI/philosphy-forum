@@ -1,6 +1,16 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopics, signup, login, updateUser, TopicsResponse } from './request'
+import {
+  fetchTopics,
+  signup,
+  login,
+  updateUser,
+  TopicsResponse,
+  setAuthToken,
+  getAuthToken,
+  fetchTopicDetail,
+  TopicDetailResponse
+} from './request'
 import { exampleTopics } from './data/exampleTopics'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -13,6 +23,70 @@ import { SignupPanel } from './components/SignupPanel'
 import { ProfilePanel } from './components/ProfilePanel'
 import { AccountSettingsPanel } from './components/AccountSettingsPanel'
 
+const USER_STORAGE_KEY = 'philosophy-forum.current-user'
+const DEFAULT_USER_NAME = '已登录用户'
+
+function getUserStorage(): Storage | null {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return null
+  }
+  return window.localStorage
+}
+
+function sanitiseUserProfile(profile: Partial<UserProfile> | null | undefined): UserProfile | null {
+  if (!profile) {
+    return null
+  }
+
+  const name =
+    typeof profile.name === 'string' && profile.name.trim().length > 0
+      ? profile.name.trim()
+      : DEFAULT_USER_NAME
+  const email = typeof profile.email === 'string' ? profile.email : ''
+
+  return { name, email }
+}
+
+function loadStoredUserProfile(): UserProfile | null {
+  const storage = getUserStorage()
+  if (!storage) {
+    return null
+  }
+
+  try {
+    const raw = storage.getItem(USER_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as Partial<UserProfile> | null
+    return sanitiseUserProfile(parsed)
+  } catch (_) {
+    return null
+  }
+}
+
+function persistUserProfile(profile: UserProfile | null) {
+  const storage = getUserStorage()
+  if (!storage) {
+    return
+  }
+
+  if (!profile) {
+    storage.removeItem(USER_STORAGE_KEY)
+    return
+  }
+
+  try {
+    storage.setItem(USER_STORAGE_KEY, JSON.stringify(profile))
+  } catch (_) {
+    // Ignore storage quota or availability errors
+  }
+}
+
+function createFallbackUser(): UserProfile {
+  return { name: DEFAULT_USER_NAME, email: '' }
+}
+
 type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings'
 
 type ToastState = ToastMessage | null
@@ -23,7 +97,22 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
   const [toast, setToast] = useState<ToastState>(null)
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const token = getAuthToken()
+    if (!token) {
+      return null
+    }
+
+    const stored = loadStoredUserProfile()
+    return stored ?? createFallbackUser()
+  })
+
+  useEffect(() => {
+    if (!currentUser && getAuthToken()) {
+      const stored = loadStoredUserProfile()
+      setCurrentUser(stored ?? createFallbackUser())
+    }
+  }, [currentUser])
 
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('')
@@ -61,7 +150,8 @@ function App() {
               id: item.id,
               title: item.title ?? fallback?.title ?? `话题 ${item.id}`,
               author: item.author ?? fallback?.author ?? '未知',
-              description: fallback?.description ?? ''
+              description: fallback?.description ?? '',
+              comments: fallback?.comments ?? []
             }
           })
 
@@ -74,7 +164,8 @@ function App() {
               id: api.id,
               title: api.title ?? existing?.title ?? `话题 ${api.id}`,
               author: api.author ?? existing?.author ?? '未知',
-              description: api.description ?? existing?.description ?? ''
+              description: api.description ?? existing?.description ?? '',
+              comments: existing?.comments ?? api.comments ?? []
             })
           }
           setAllTopics(Array.from(merged.values()))
@@ -106,6 +197,97 @@ function App() {
 
   const selectedTopic =
     selectedTopicId == null ? null : allTopics.find((topic) => topic.id === selectedTopicId) ?? null
+
+  useEffect(() => {
+    if (selectedTopicId == null) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadTopicDetail = async (topicId: number) => {
+      try {
+        const result = await fetchTopicDetail(topicId)
+        if (cancelled) {
+          return
+        }
+
+        if (result.status === 200 && result.data && typeof result.data !== 'string') {
+          const detail = result.data as TopicDetailResponse
+
+          setAllTopics((prevTopics) => {
+            const fallbackTopic =
+              prevTopics.find((topic) => topic.id === detail.id) ??
+              exampleTopics.find((topic) => topic.id === detail.id) ??
+              null
+
+            const fallbackComments: Topic['comments'] = fallbackTopic?.comments ?? []
+
+            const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
+              ? detail.comments.map((comment, index): Topic['comments'][number] => {
+                  const backup = fallbackComments[index]
+                  const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
+                  const commentCreatedAt =
+                    comment.created_at ??
+                    comment.createdAt ??
+                    backup?.createdAt ??
+                    new Date().toISOString()
+
+                  return {
+                    id: comment.id ?? backup?.id ?? index,
+                    author: comment.author ?? backup?.author ?? '匿名用户',
+                    body: commentBody,
+                    createdAt: commentCreatedAt
+                  }
+                })
+              : fallbackComments
+
+            const updatedTopic: Topic = {
+              id: detail.id,
+              title: detail.title ?? fallbackTopic?.title ?? `话题 ${detail.id}`,
+              author: detail.author ?? fallbackTopic?.author ?? '未知',
+              description: detail.description ?? fallbackTopic?.description ?? '',
+              comments: mappedComments
+            }
+
+            let found = false
+            const nextTopics = prevTopics.map((topic) => {
+              if (topic.id === updatedTopic.id) {
+                found = true
+                return updatedTopic
+              }
+              return topic
+            })
+
+            if (!found) {
+              return [...nextTopics, updatedTopic]
+            }
+
+            return nextTopics
+          })
+          return
+        }
+
+        if (result.status === 404) {
+          showToast({ type: 'error', message: '未找到该话题。' })
+          setAllTopics((prevTopics) => prevTopics.filter((topic) => topic.id !== topicId))
+          return
+        }
+
+        showToast({ type: 'error', message: '加载话题详情时出错。' })
+      } catch (_) {
+        if (!cancelled) {
+          showToast({ type: 'error', message: '加载话题详情时出错。' })
+        }
+      }
+    }
+
+    loadTopicDetail(selectedTopicId)
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTopicId, showToast])
 
   const openTopic = (topicId: number) => {
     setSelectedTopicId(topicId)
@@ -150,7 +332,9 @@ function App() {
   }
 
   const handleLogout = () => {
+    setAuthToken(null)
     setCurrentUser(null)
+    persistUserProfile(null)
     goHome()
     showToast({ type: 'success', message: '你已成功退出登录。' }, 3000)
   }
@@ -233,15 +417,21 @@ function App() {
             ? res.data
             : (res.data as any)?.message || (res.data as any)?.error || '登录失败。'
         showToast({ type: 'error', message: msg })
+        setAuthToken(null)
+        persistUserProfile(null)
       } else {
         const payload = res.data as any
         const username = payload?.user?.username ?? payload?.user?.email ?? email ?? '朋友'
         const userEmail = payload?.user?.email ?? email
+        const sessionId = payload?.session_id ?? null
         showToast({ type: 'success', message: `欢迎回来，${username}！` }, 3000)
-        setCurrentUser({
+        setAuthToken(sessionId)
+        const nextUser: UserProfile = {
           name: username,
           email: userEmail
-        })
+        }
+        setCurrentUser(nextUser)
+        persistUserProfile(nextUser)
         goHome()
       }
     } catch (_) {
@@ -298,7 +488,12 @@ function App() {
       const payloadUser = (res.data as any)?.user
       const updatedName = payloadUser?.username ?? trimmedName
       const updatedEmail = payloadUser?.email ?? currentUser.email
-      setCurrentUser({ name: updatedName, email: updatedEmail })
+      const nextProfile: UserProfile = {
+        name: updatedName,
+        email: updatedEmail
+      }
+      setCurrentUser(nextProfile)
+      persistUserProfile(nextProfile)
       setSettingsName(updatedName)
       setSettingsPassword('')
       setSettingsConfirmPassword('')
@@ -338,7 +533,7 @@ function App() {
         userInitial={userInitial}
       />
 
-      <main className="content" role="main">
+      <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
         {view === 'home' && <TopicsView topics={filteredTopics} onSelect={openTopic} />}
 
         {view === 'topic' && selectedTopic && <TopicDetail topic={selectedTopic} onBack={goHome} />}
