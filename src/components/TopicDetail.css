@@ -126,6 +126,18 @@
   transform: translateY(0);
 }
 
+.respond-button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.respond-button[disabled]:hover,
+.respond-button[disabled]:focus-visible {
+  background: linear-gradient(135deg, #6366f1, #4338ca);
+  color: #fff;
+}
+
 .respond-button--secondary {
   background: transparent;
   color: #4338ca;
@@ -197,6 +209,12 @@
 .response-notice {
   margin: 0;
   color: #16a34a;
+  font-weight: 600;
+}
+
+.response-error {
+  margin: 0;
+  color: #dc2626;
   font-weight: 600;
 }
 

@@ -102,3 +102,24 @@ export type TopicsResponse = {
 export async function fetchTopics(): Promise<ApiResult<TopicsResponse | string>> {
   return jsonFetch<TopicsResponse | string>('/topics')
 }
+
+type ApiMessage = { message?: string; error?: string }
+
+export type CreateCommentResponse = {
+  id: number
+  author?: string
+  body?: string
+  content?: string
+  createdAt?: string
+  created_at?: string
+}
+
+export async function postTopicComment(
+  topicId: number,
+  content: string
+): Promise<ApiResult<CreateCommentResponse | ApiMessage | string>> {
+  return jsonFetch<CreateCommentResponse | ApiMessage | string>(`/topics/${topicId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  })
+}

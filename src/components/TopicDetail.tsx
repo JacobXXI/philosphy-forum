@@ -1,5 +1,6 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { Topic } from '../types'
+import { postTopicComment } from '../request'
 import './TopicDetail.css'
 
 type TopicDetailProps = {
@@ -11,9 +12,20 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
   const [isResponding, setIsResponding] = useState(false)
   const [responseDraft, setResponseDraft] = useState('')
   const [responseNotice, setResponseNotice] = useState<string | null>(null)
+  const [responseError, setResponseError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    setIsResponding(false)
+    setResponseDraft('')
+    setResponseNotice(null)
+    setResponseError(null)
+    setIsSubmitting(false)
+  }, [topic.id])
 
   const handleStartResponding = () => {
     setResponseNotice(null)
+    setResponseError(null)
     setIsResponding(true)
   }
 
@@ -21,18 +33,59 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
     setIsResponding(false)
     setResponseDraft('')
     setResponseNotice(null)
+    setResponseError(null)
+    setIsSubmitting(false)
   }
 
-  const handleResponseSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleResponseSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (isSubmitting) {
+      return
+    }
     const trimmed = responseDraft.trim()
     if (!trimmed) {
+      setResponseError('请输入回应内容。')
       return
     }
 
-    setResponseDraft('')
-    setIsResponding(false)
-    setResponseNotice('感谢你的回应！我们会尽快审核并与社区分享。')
+    setIsSubmitting(true)
+    setResponseError(null)
+    setResponseNotice(null)
+
+    try {
+      const result = await postTopicComment(topic.id, trimmed)
+      if (result.status === 201) {
+        setResponseDraft('')
+        setIsResponding(false)
+        setResponseNotice('感谢你的回应！我们会尽快审核并与社区分享。')
+        return
+      }
+
+      const data = result.data
+      const serverMessage =
+        typeof data === 'string'
+          ? data
+          : data && typeof data === 'object'
+          ? (data as { message?: string; error?: string }).message ??
+            (data as { message?: string; error?: string }).error
+          : undefined
+
+      const fallbackMessage =
+        serverMessage ||
+        (result.status === 401
+          ? '请先登录再发表回应。'
+          : result.status === 404
+          ? '未找到该话题，无法提交回应。'
+          : result.status === 400
+          ? '回应内容不符合要求，请修改后重试。'
+          : '提交失败，请稍后再试。')
+
+      setResponseError(fallbackMessage)
+    } catch (_) {
+      setResponseError('无法连接到服务器，请稍后再试。')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -70,7 +123,12 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
           <p className="no-comments">目前还没有评论，成为第一个分享想法的人吧。</p>
         )}
         {isResponding ? (
-          <form className="response-form" onSubmit={handleResponseSubmit} aria-label="回应表单">
+          <form
+            className="response-form"
+            onSubmit={handleResponseSubmit}
+            aria-label="回应表单"
+            aria-busy={isSubmitting}
+          >
             <div className="response-form__field">
               <label htmlFor="response-input">你的回应</label>
               <textarea
@@ -81,17 +139,28 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
                 placeholder="分享你的观点或提出问题……"
                 required
                 rows={5}
+                disabled={isSubmitting}
               />
             </div>
             <p className="response-form__hint">回应暂时不会立即发布，我们会在下一次更新中加入完整的互动体验。</p>
             <div className="response-form__actions">
-              <button type="submit" className="respond-button">
-                提交回应
+              <button type="submit" className="respond-button" disabled={isSubmitting}>
+                {isSubmitting ? '提交中…' : '提交回应'}
               </button>
-              <button type="button" className="respond-button respond-button--secondary" onClick={handleCancelResponding}>
+              <button
+                type="button"
+                className="respond-button respond-button--secondary"
+                onClick={handleCancelResponding}
+                disabled={isSubmitting}
+              >
                 取消
               </button>
             </div>
+            {responseError && (
+              <p className="response-error" role="alert">
+                {responseError}
+              </p>
+            )}
           </form>
         ) : (
           <button
@@ -103,7 +172,11 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
             发表回应
           </button>
         )}
-        {responseNotice && <p className="response-notice">{responseNotice}</p>}
+        {responseNotice && (
+          <p className="response-notice" role="status" aria-live="polite">
+            {responseNotice}
+          </p>
+        )}
       </section>
     </article>
   )
