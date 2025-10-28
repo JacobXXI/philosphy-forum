@@ -11,7 +11,6 @@ import {
   fetchTopicDetail,
   TopicDetailResponse
 } from './request'
-import { exampleTopics } from './data/exampleTopics'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
 import { TopBar } from './components/TopBar'
@@ -95,7 +94,7 @@ function App() {
   const [view, setView] = useState<View>('home')
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
+  const [allTopics, setAllTopics] = useState<Topic[]>([])
   const [toast, setToast] = useState<ToastState>(null)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const token = getAuthToken()
@@ -144,37 +143,21 @@ function App() {
           typeof data !== 'string' &&
           Array.isArray((data as TopicsResponse).items)
         ) {
-          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => {
-            const fallback = exampleTopics.find((topic) => topic.id === item.id)
-            return {
-              id: item.id,
-              title: item.title ?? fallback?.title ?? `话题 ${item.id}`,
-              author: item.author ?? fallback?.author ?? '未知',
-              description: fallback?.description ?? '',
-              comments: fallback?.comments ?? []
-            }
-          })
+          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => ({
+            id: item.id,
+            title: item.title ?? `话题 ${item.id}`,
+            author: item.author ?? '未知',
+            description: item.description ?? '',
+            comments: []
+          }))
 
-          // Merge API topics with examples by ID; API overrides, but keep example when missing
-          const merged = new Map<number, Topic>()
-          for (const ex of exampleTopics) merged.set(ex.id, ex)
-          for (const api of apiTopics) {
-            const existing = merged.get(api.id)
-            merged.set(api.id, {
-              id: api.id,
-              title: api.title ?? existing?.title ?? `话题 ${api.id}`,
-              author: api.author ?? existing?.author ?? '未知',
-              description: api.description ?? existing?.description ?? '',
-              comments: existing?.comments ?? api.comments ?? []
-            })
-          }
-          setAllTopics(Array.from(merged.values()))
+          setAllTopics(apiTopics)
         } else if (!cancelled) {
-          showToast({ type: 'error', message: '获取话题失败，正在显示示例内容。' })
+          showToast({ type: 'error', message: '获取话题失败，请稍后再试。' })
         }
       } catch (_) {
         if (!cancelled) {
-          showToast({ type: 'error', message: '获取话题失败，正在显示示例内容。' })
+          showToast({ type: 'error', message: '获取话题失败，请稍后再试。' })
         }
       }
     }
@@ -216,10 +199,7 @@ function App() {
           const detail = result.data as TopicDetailResponse
 
           setAllTopics((prevTopics) => {
-            const fallbackTopic =
-              prevTopics.find((topic) => topic.id === detail.id) ??
-              exampleTopics.find((topic) => topic.id === detail.id) ??
-              null
+            const fallbackTopic = prevTopics.find((topic) => topic.id === detail.id) ?? null
 
             const fallbackComments: Topic['comments'] = fallbackTopic?.comments ?? []
 
@@ -297,6 +277,11 @@ function App() {
   const goHome = () => {
     setView('home')
     setSelectedTopicId(null)
+  }
+
+  const handleHomeClick = () => {
+    setSearchTerm('')
+    goHome()
   }
 
   const goToProfile = () => {
@@ -523,7 +508,7 @@ function App() {
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
       <TopBar
-        onHome={goHome}
+        onHome={handleHomeClick}
         onLogin={goToLogin}
         onProfile={goToProfile}
         onSearchSubmit={handleSearchSubmit}
