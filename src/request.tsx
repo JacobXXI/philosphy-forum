@@ -1,11 +1,34 @@
 const BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000'
+const AUTH_STORAGE_KEY = 'philosophy-forum.session-token'
 
 export type ApiResult<T> = { status: number; data: T | undefined }
 
-let authToken: string | null = null
+const browserStorage =
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+    ? window.localStorage
+    : null
+
+let authToken: string | null = browserStorage?.getItem(AUTH_STORAGE_KEY) ?? null
+
+function persistAuthToken(token: string | null) {
+  if (!browserStorage) return
+  if (token) {
+    browserStorage.setItem(AUTH_STORAGE_KEY, token)
+  } else {
+    browserStorage.removeItem(AUTH_STORAGE_KEY)
+  }
+}
+
+function normaliseAuthHeader(token: string) {
+  const trimmed = token.trim()
+  if (!trimmed) return ''
+  const hasKnownPrefix = /^(bearer|session)\s+/i.test(trimmed)
+  return hasKnownPrefix ? trimmed : `Bearer ${trimmed}`
+}
 
 export function setAuthToken(token: string | null) {
-  authToken = token
+  authToken = token?.trim() || null
+  persistAuthToken(authToken)
 }
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
@@ -15,7 +38,13 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<ApiResult
     headers.set('Content-Type', 'application/json')
   }
   if (authToken && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${authToken}`)
+    const headerValue = normaliseAuthHeader(authToken)
+    if (headerValue) {
+      headers.set('Authorization', headerValue)
+      if (!headers.has('X-Session-Id')) {
+        headers.set('X-Session-Id', authToken)
+      }
+    }
   }
   const res = await fetch(`${BASE_URL}${path}`, {
     credentials: 'include',
