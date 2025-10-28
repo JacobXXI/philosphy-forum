@@ -6,9 +6,18 @@ import './TopicDetail.css'
 type TopicDetailProps = {
   topic: Topic
   onBack: () => void
+  canCloseTopic?: boolean
+  onCloseTopic?: (topicId: number) => void
+  closingTopic?: boolean
 }
 
-export function TopicDetail({ topic, onBack }: TopicDetailProps) {
+export function TopicDetail({
+  topic,
+  onBack,
+  canCloseTopic,
+  onCloseTopic,
+  closingTopic
+}: TopicDetailProps) {
   const [isResponding, setIsResponding] = useState(false)
   const [responseDraft, setResponseDraft] = useState('')
   const [responseNotice, setResponseNotice] = useState<string | null>(null)
@@ -23,7 +32,22 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
     setIsSubmitting(false)
   }, [topic.id])
 
+  useEffect(() => {
+    if (topic.closed) {
+      setIsResponding(false)
+      setResponseDraft('')
+      setIsSubmitting(false)
+      setResponseError(null)
+      setResponseNotice(null)
+    }
+  }, [topic.closed])
+
   const handleStartResponding = () => {
+    if (topic.closed) {
+      setResponseError(null)
+      setResponseNotice('该话题已关闭，无法再发表回应。')
+      return
+    }
     setResponseNotice(null)
     setResponseError(null)
     setIsResponding(true)
@@ -40,6 +64,10 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
   const handleResponseSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (isSubmitting) {
+      return
+    }
+    if (topic.closed) {
+      setResponseError('该话题已关闭，无法提交回应。')
       return
     }
     const trimmed = responseDraft.trim()
@@ -97,10 +125,32 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
         <span className="topic-id detail-id">话题 #{topic.id}</span>
         <h1 id="topic-title">{topic.title}</h1>
         <p className="topic-author detail-author">发起人：{topic.author}</p>
+        <div className="topic-detail__status" aria-live="polite">
+          <span
+            className={`topic-status${topic.closed ? ' topic-status--closed' : ' topic-status--open'}`}
+          >
+            {topic.closed ? '已关闭' : '开放中'}
+          </span>
+          {canCloseTopic && !topic.closed && (
+            <button
+              type="button"
+              className="close-topic-button"
+              onClick={() => onCloseTopic?.(topic.id)}
+              disabled={closingTopic}
+            >
+              {closingTopic ? '关闭中…' : '关闭话题'}
+            </button>
+          )}
+        </div>
       </header>
       <p className="topic-description">{topic.description}</p>
       <section className="comments-section" aria-labelledby="comments-heading">
         <h2 id="comments-heading">社区回应</h2>
+        {topic.closed && (
+          <p className="topic-closed-message" role="status" aria-live="polite">
+            该话题已关闭，新的评论将无法提交。
+          </p>
+        )}
         {topic.comments.length > 0 ? (
           <ul className="comment-list">
             {topic.comments.map((comment) => (
@@ -122,7 +172,7 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
         ) : (
           <p className="no-comments">目前还没有评论，成为第一个分享想法的人吧。</p>
         )}
-        {isResponding ? (
+        {!topic.closed && isResponding ? (
           <form
             className="response-form"
             onSubmit={handleResponseSubmit}
@@ -139,7 +189,7 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
                 placeholder="分享你的观点或提出问题……"
                 required
                 rows={5}
-                disabled={isSubmitting}
+                disabled={isSubmitting || topic.closed}
               />
             </div>
             <p className="response-form__hint">回应暂时不会立即发布，我们会在下一次更新中加入完整的互动体验。</p>
@@ -163,14 +213,16 @@ export function TopicDetail({ topic, onBack }: TopicDetailProps) {
             )}
           </form>
         ) : (
-          <button
-            type="button"
-            className="respond-button"
-            aria-label="回应这个话题"
-            onClick={handleStartResponding}
-          >
-            发表回应
-          </button>
+          !topic.closed && (
+            <button
+              type="button"
+              className="respond-button"
+              aria-label="回应这个话题"
+              onClick={handleStartResponding}
+            >
+              发表回应
+            </button>
+          )
         )}
         {responseNotice && (
           <p className="response-notice" role="status" aria-live="polite">

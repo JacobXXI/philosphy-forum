@@ -10,6 +10,8 @@ export type Topic = {
   title: string
   author: string
   description: string
+  closed: boolean
+  likes?: number
   comments: Comment[]
 }
 

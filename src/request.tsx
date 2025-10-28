@@ -167,6 +167,8 @@ export type TopicSummary = {
   title: string
   author: string
   description?: string
+  closed?: boolean
+  likes?: number
 }
 
 export type TopicsResponse = {
@@ -216,6 +218,8 @@ export type CreateTopicResponse = {
   title?: string
   description?: string
   author?: string
+  closed?: boolean
+  likes?: number
 }
 
 export async function createTopic(
@@ -256,5 +260,21 @@ export async function postTopicComment(
   return jsonFetch<CreateCommentResponse | ApiMessage | string>(`/topics/${topicId}/comments`, {
     method: 'POST',
     body: JSON.stringify(payload)
+  })
+}
+
+export type CloseTopicResponse = TopicDetailResponse
+
+export async function closeTopic(
+  topicId: number
+): Promise<ApiResult<CloseTopicResponse | ApiMessage | string>> {
+  const payload: { session_id?: string } = {}
+  if (authToken) {
+    payload.session_id = authToken
+  }
+
+  return jsonFetch<CloseTopicResponse | ApiMessage | string>(`/topics/${topicId}/close`, {
+    method: 'POST',
+    body: Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined
   })
 }

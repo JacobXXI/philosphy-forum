@@ -10,7 +10,8 @@ import {
   getAuthToken,
   fetchTopicDetail,
   TopicDetailResponse,
-  createTopic
+  createTopic,
+  closeTopic
 } from './request'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -92,6 +93,43 @@ type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings' | 'cr
 
 type ToastState = ToastMessage | null
 
+function mergeTopicDetailResponse(
+  detail: TopicDetailResponse,
+  fallback: Topic | null
+): Topic {
+  const topicId = detail.id ?? fallback?.id ?? 0
+  const fallbackComments = fallback?.comments ?? []
+
+  const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
+    ? detail.comments.map((comment, index) => {
+        const backup = fallbackComments[index]
+        const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
+        const commentCreatedAt =
+          comment.created_at ??
+          comment.createdAt ??
+          backup?.createdAt ??
+          new Date().toISOString()
+
+        return {
+          id: comment.id ?? backup?.id ?? index,
+          author: comment.author ?? backup?.author ?? '匿名用户',
+          body: commentBody,
+          createdAt: commentCreatedAt
+        }
+      })
+    : fallbackComments
+
+  return {
+    id: topicId,
+    title: detail.title ?? fallback?.title ?? `话题 ${topicId}`,
+    author: detail.author ?? fallback?.author ?? '未知',
+    description: detail.description ?? fallback?.description ?? '',
+    closed: detail.closed ?? fallback?.closed ?? false,
+    likes: detail.likes ?? fallback?.likes,
+    comments: mappedComments
+  }
+}
+
 function App() {
   const [view, setView] = useState<View>('home')
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
@@ -130,6 +168,7 @@ function App() {
   const [createTopicDescription, setCreateTopicDescription] = useState('')
   const [createTopicLoading, setCreateTopicLoading] = useState(false)
   const [createTopicError, setCreateTopicError] = useState<string | null>(null)
+  const [closingTopicId, setClosingTopicId] = useState<number | null>(null)
 
   const showToast = useCallback((nextToast: ToastMessage, duration = 4000) => {
     setToast(nextToast)
@@ -154,6 +193,8 @@ function App() {
             title: item.title ?? `话题 ${item.id}`,
             author: item.author ?? '未知',
             description: item.description ?? '',
+            closed: item.closed ?? false,
+            likes: item.likes,
             comments: []
           }))
 
@@ -187,6 +228,27 @@ function App() {
   const selectedTopic =
     selectedTopicId == null ? null : allTopics.find((topic) => topic.id === selectedTopicId) ?? null
 
+  const canCloseSelectedTopic = useMemo(() => {
+    if (!currentUser || !selectedTopic) {
+      return false
+    }
+
+    const authorToken = selectedTopic.author?.trim().toLowerCase()
+    if (!authorToken) {
+      return false
+    }
+
+    const nameToken = currentUser.name?.trim().toLowerCase()
+    const emailToken = currentUser.email?.trim().toLowerCase()
+
+    const matchesName = Boolean(nameToken) && nameToken === authorToken
+    const matchesEmail = Boolean(emailToken) && emailToken === authorToken
+
+    return matchesName || matchesEmail
+  }, [currentUser, selectedTopic])
+
+  const isClosingSelectedTopic = selectedTopic ? closingTopicId === selectedTopic.id : false
+
   useEffect(() => {
     if (selectedTopicId == null) {
       return
@@ -206,35 +268,7 @@ function App() {
 
           setAllTopics((prevTopics) => {
             const fallbackTopic = prevTopics.find((topic) => topic.id === detail.id) ?? null
-
-            const fallbackComments: Topic['comments'] = fallbackTopic?.comments ?? []
-
-            const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
-              ? detail.comments.map((comment, index): Topic['comments'][number] => {
-                  const backup = fallbackComments[index]
-                  const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
-                  const commentCreatedAt =
-                    comment.created_at ??
-                    comment.createdAt ??
-                    backup?.createdAt ??
-                    new Date().toISOString()
-
-                  return {
-                    id: comment.id ?? backup?.id ?? index,
-                    author: comment.author ?? backup?.author ?? '匿名用户',
-                    body: commentBody,
-                    createdAt: commentCreatedAt
-                  }
-                })
-              : fallbackComments
-
-            const updatedTopic: Topic = {
-              id: detail.id,
-              title: detail.title ?? fallbackTopic?.title ?? `话题 ${detail.id}`,
-              author: detail.author ?? fallbackTopic?.author ?? '未知',
-              description: detail.description ?? fallbackTopic?.description ?? '',
-              comments: mappedComments
-            }
+            const updatedTopic = mergeTopicDetailResponse(detail, fallbackTopic)
 
             let found = false
             const nextTopics = prevTopics.map((topic) => {
@@ -565,6 +599,8 @@ function App() {
         title: payload?.title ?? trimmedTitle,
         author: payload?.author ?? currentUser.name ?? '我',
         description: payload?.description ?? trimmedDescription,
+        closed: payload?.closed ?? false,
+        likes: payload?.likes,
         comments: []
       }
 
@@ -595,6 +631,86 @@ function App() {
     goHome()
   }
 
+  const handleCloseTopic = useCallback(
+    async (topicId: number) => {
+      if (!currentUser) {
+        showToast({ type: 'info', message: '请先登录后再关闭话题。' }, 3000)
+        setView('login')
+        return
+      }
+
+      if (closingTopicId === topicId) {
+        return
+      }
+
+      setClosingTopicId(topicId)
+      try {
+        const res = await closeTopic(topicId)
+        if (res.status === 200 && res.data && typeof res.data !== 'string') {
+          const detail = res.data as TopicDetailResponse
+          setAllTopics((prevTopics) => {
+            const fallbackTopic = prevTopics.find((topic) => topic.id === topicId) ?? null
+            const mergedTopic = mergeTopicDetailResponse(detail, fallbackTopic)
+            const finalTopic: Topic = { ...mergedTopic, closed: detail.closed ?? true }
+
+            let updated = false
+            const nextTopics = prevTopics.map((topic) => {
+              if (topic.id === finalTopic.id) {
+                updated = true
+                return finalTopic
+              }
+              return topic
+            })
+
+            if (!updated) {
+              return [...nextTopics, finalTopic]
+            }
+
+            return nextTopics
+          })
+
+          showToast({ type: 'success', message: '话题已关闭，新的评论将无法提交。' }, 3000)
+          return
+        }
+
+        const data = res.data
+        let errorMessage =
+          res.status === 401
+            ? '请先登录后再关闭话题。'
+            : res.status === 403
+            ? '只有发起人或管理员可以关闭该话题。'
+            : res.status === 404
+            ? '未找到该话题，无法关闭。'
+            : '关闭话题失败，请稍后再试。'
+
+        if (typeof data === 'string' && data.trim()) {
+          errorMessage = data
+        } else if (data && typeof data === 'object') {
+          const message =
+            (data as { message?: string; error?: string }).message ??
+            (data as { message?: string; error?: string }).error
+          if (message) {
+            errorMessage = message
+          }
+        }
+
+        showToast({ type: 'error', message: errorMessage }, 4000)
+
+        if (res.status === 401) {
+          setAuthToken(null)
+          setCurrentUser(null)
+          persistUserProfile(null)
+          setView('login')
+        }
+      } catch (_) {
+        showToast({ type: 'error', message: '关闭话题失败，请检查网络连接。' }, 4000)
+      } finally {
+        setClosingTopicId((prev) => (prev === topicId ? null : prev))
+      }
+    },
+    [closingTopicId, currentUser, showToast]
+  )
+
   return (
     <div className="app">
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
@@ -615,7 +731,15 @@ function App() {
       <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
         {view === 'home' && <TopicsView topics={filteredTopics} onSelect={openTopic} />}
 
-        {view === 'topic' && selectedTopic && <TopicDetail topic={selectedTopic} onBack={goHome} />}
+        {view === 'topic' && selectedTopic && (
+          <TopicDetail
+            topic={selectedTopic}
+            onBack={goHome}
+            canCloseTopic={canCloseSelectedTopic && !selectedTopic.closed}
+            onCloseTopic={handleCloseTopic}
+            closingTopic={isClosingSelectedTopic}
+          />
+        )}
 
         {view === 'topic' && !selectedTopic && <TopicNotFound onBack={goHome} />}
 

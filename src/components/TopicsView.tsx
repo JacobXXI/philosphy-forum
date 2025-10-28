@@ -19,6 +19,7 @@ export function TopicsView({ topics, onSelect }: TopicsViewProps) {
               <span className="topic-id">#{topic.id}</span>
               <span className="topic-author">作者：{topic.author}</span>
             </div>
+            {topic.closed && <span className="topic-card__status">已关闭</span>}
             <h2>{topic.title}</h2>
             <p>{topic.description}</p>
             <button onClick={() => onSelect(topic.id)} className="topic-card__button">
