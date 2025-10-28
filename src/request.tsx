@@ -157,8 +157,12 @@ export async function postTopicComment(
   topicId: number,
   content: string
 ): Promise<ApiResult<CreateCommentResponse | ApiMessage | string>> {
+  const payload: { content: string; session_id?: string } = { content }
+  if (authToken) {
+    payload.session_id = authToken
+  }
   return jsonFetch<CreateCommentResponse | ApiMessage | string>(`/topics/${topicId}/comments`, {
     method: 'POST',
-    body: JSON.stringify({ content })
+    body: JSON.stringify(payload)
   })
 }
