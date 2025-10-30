@@ -89,6 +89,42 @@ function createFallbackUser(): UserProfile {
   return { name: DEFAULT_USER_NAME, email: '' }
 }
 
+function normaliseAuthorName(author: unknown, fallback = '未知'): string {
+  if (typeof author === 'string') {
+    const trimmed = author.trim()
+    return trimmed || fallback
+  }
+
+  if (typeof author === 'number' || typeof author === 'boolean') {
+    const text = String(author).trim()
+    return text || fallback
+  }
+
+  if (author && typeof author === 'object') {
+    const record = author as Record<string, unknown>
+    const candidateKeys = ['username', 'name', 'author', 'email', 'displayName']
+    for (const key of candidateKeys) {
+      const value = record[key]
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed) {
+          return trimmed
+        }
+      }
+    }
+
+    const labelled = (record as { toString?: () => string }).toString?.()
+    if (labelled && labelled !== '[object Object]') {
+      const trimmed = labelled.trim()
+      if (trimmed) {
+        return trimmed
+      }
+    }
+  }
+
+  return fallback
+}
+
 type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings' | 'create-topic'
 
 type ToastState = ToastMessage | null
@@ -112,17 +148,20 @@ function mergeTopicDetailResponse(
 
         return {
           id: comment.id ?? backup?.id ?? index,
-          author: comment.author ?? backup?.author ?? '匿名用户',
+          author: normaliseAuthorName(comment.author ?? backup?.author, backup?.author ?? '匿名用户'),
           body: commentBody,
           createdAt: commentCreatedAt
         }
       })
     : fallbackComments
 
+  const fallbackAuthor = fallback?.author ?? '未知'
+  const authorName = normaliseAuthorName(detail.author ?? fallbackAuthor, fallbackAuthor)
+
   return {
     id: topicId,
     title: detail.title ?? fallback?.title ?? `话题 ${topicId}`,
-    author: detail.author ?? fallback?.author ?? '未知',
+    author: authorName,
     description: detail.description ?? fallback?.description ?? '',
     closed: detail.closed ?? fallback?.closed ?? false,
     likes: detail.likes ?? fallback?.likes,
@@ -191,7 +230,7 @@ function App() {
           const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => ({
             id: item.id,
             title: item.title ?? `话题 ${item.id}`,
-            author: item.author ?? '未知',
+            author: normaliseAuthorName(item.author, '未知'),
             description: item.description ?? '',
             closed: item.closed ?? false,
             likes: item.likes,
@@ -233,13 +272,13 @@ function App() {
       return false
     }
 
-    const authorToken = selectedTopic.author?.trim().toLowerCase()
+    const authorToken = normaliseAuthorName(selectedTopic.author, '').toLowerCase()
     if (!authorToken) {
       return false
     }
 
-    const nameToken = currentUser.name?.trim().toLowerCase()
-    const emailToken = currentUser.email?.trim().toLowerCase()
+    const nameToken = normaliseAuthorName(currentUser.name, '').toLowerCase()
+    const emailToken = normaliseAuthorName(currentUser.email, '').toLowerCase()
 
     const matchesName = Boolean(nameToken) && nameToken === authorToken
     const matchesEmail = Boolean(emailToken) && emailToken === authorToken
@@ -597,7 +636,7 @@ function App() {
       const newTopic: Topic = {
         id: payload?.id ?? Date.now(),
         title: payload?.title ?? trimmedTitle,
-        author: payload?.author ?? currentUser.name ?? '我',
+        author: normaliseAuthorName(payload?.author ?? currentUser.name, currentUser.name ?? '我'),
         description: payload?.description ?? trimmedDescription,
         closed: payload?.closed ?? false,
         likes: payload?.likes,
