@@ -61,6 +61,19 @@ export function TopicDetail({
     setIsSubmitting(false)
   }
 
+  const handleCloseTopicClick = () => {
+    if (!onCloseTopic) {
+      return
+    }
+
+    const confirmed = window.confirm('are you sure to close the topic')
+    if (!confirmed) {
+      return
+    }
+
+    onCloseTopic(topic.id)
+  }
+
   const handleResponseSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (isSubmitting) {
@@ -135,7 +148,7 @@ export function TopicDetail({
             <button
               type="button"
               className="close-topic-button"
-              onClick={() => onCloseTopic?.(topic.id)}
+              onClick={handleCloseTopicClick}
               disabled={closingTopic}
             >
               {closingTopic ? '关闭中…' : '关闭话题'}
