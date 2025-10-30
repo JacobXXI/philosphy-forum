@@ -85,6 +85,37 @@
   background: #3730a3;
 }
 
+.top-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.create-topic-button {
+  padding: 0.55rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid #4338ca;
+  background: #4338ca;
+  color: #f8fafc;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 12px rgba(67, 56, 202, 0.18);
+}
+
+.create-topic-button:hover {
+  background: #3730a3;
+  box-shadow: 0 8px 18px rgba(67, 56, 202, 0.24);
+}
+
+.create-topic-button:disabled,
+.create-topic-button[aria-disabled='true'] {
+  background: #e2e8f0;
+  border-color: #cbd5f5;
+  color: #64748b;
+  box-shadow: none;
+}
+
 .login-button {
   padding: 0.55rem 1.3rem;
   border-radius: 999px;
@@ -145,5 +176,9 @@
 
   .search-form {
     width: 100%;
+  }
+
+  .top-bar__actions {
+    justify-content: flex-end;
   }
 }

@@ -9,7 +9,10 @@ export type Topic = {
   id: number
   title: string
   author: string
+  authorTokens: string[]
   description: string
+  closed: boolean
+  likes?: number
   comments: Comment[]
 }
 

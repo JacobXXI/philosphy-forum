@@ -9,7 +9,9 @@ import {
   setAuthToken,
   getAuthToken,
   fetchTopicDetail,
-  TopicDetailResponse
+  TopicDetailResponse,
+  createTopic,
+  closeTopic
 } from './request'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -21,6 +23,7 @@ import { LoginPanel } from './components/LoginPanel'
 import { SignupPanel } from './components/SignupPanel'
 import { ProfilePanel } from './components/ProfilePanel'
 import { AccountSettingsPanel } from './components/AccountSettingsPanel'
+import { CreateTopicPanel } from './components/CreateTopicPanel'
 
 const USER_STORAGE_KEY = 'philosophy-forum.current-user'
 const DEFAULT_USER_NAME = '已登录用户'
@@ -86,9 +89,198 @@ function createFallbackUser(): UserProfile {
   return { name: DEFAULT_USER_NAME, email: '' }
 }
 
-type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings'
+function normaliseAuthorName(author: unknown, fallback = '未知'): string {
+  if (typeof author === 'string') {
+    const trimmed = author.trim()
+    return trimmed || fallback
+  }
+
+  if (typeof author === 'number' || typeof author === 'boolean') {
+    const text = String(author).trim()
+    return text || fallback
+  }
+
+  if (author && typeof author === 'object') {
+    const record = author as Record<string, unknown>
+    const candidateKeys = ['username', 'name', 'author', 'email', 'displayName']
+    for (const key of candidateKeys) {
+      const value = record[key]
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed) {
+          return trimmed
+        }
+      }
+    }
+
+    const labelled = (record as { toString?: () => string }).toString?.()
+    if (labelled && labelled !== '[object Object]') {
+      const trimmed = labelled.trim()
+      if (trimmed) {
+        return trimmed
+      }
+    }
+  }
+
+  return fallback
+}
+
+const AUTHOR_CANDIDATE_KEYS = ['username', 'name', 'author', 'email', 'displayName', 'id'] as const
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
+
+function enumerateAuthorStrings(author: unknown): string[] {
+  if (author == null) {
+    return []
+  }
+
+  if (typeof author === 'string' || typeof author === 'number' || typeof author === 'boolean') {
+    return [String(author)]
+  }
+
+  if (typeof author === 'object') {
+    const record = author as Record<string, unknown>
+    const values: string[] = []
+
+    for (const key of AUTHOR_CANDIDATE_KEYS) {
+      const value = record[key]
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        values.push(String(value))
+      }
+    }
+
+    const labelled = (record as { toString?: () => string }).toString?.()
+    if (labelled && labelled !== '[object Object]') {
+      values.push(labelled)
+    }
+
+    return values
+  }
+
+  return []
+}
+
+function collectAuthorTokens(
+  author: unknown,
+  fallbackValues: (string | null | undefined)[] = []
+): string[] {
+  const tokens = new Set<string>()
+
+  const addToken = (value: string | null | undefined) => {
+    if (!value) {
+      return
+    }
+    const trimmed = value.trim().toLowerCase()
+    if (trimmed) {
+      tokens.add(trimmed)
+    }
+  }
+
+  const processString = (value: string | null | undefined) => {
+    if (!value) {
+      return
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return
+    }
+
+    addToken(trimmed)
+
+    const emailMatches = trimmed.match(EMAIL_PATTERN)
+    if (emailMatches) {
+      for (const email of emailMatches) {
+        addToken(email)
+        const [localPart] = email.split('@')
+        addToken(localPart)
+      }
+    }
+
+    const beforeBracket = trimmed.split(/[\(<\[]/)[0]
+    addToken(beforeBracket)
+
+    const fragments = trimmed.split(/[^A-Za-z0-9@._+-]+/)
+    for (const fragment of fragments) {
+      addToken(fragment)
+    }
+  }
+
+  for (const fallback of fallbackValues) {
+    processString(fallback ?? undefined)
+  }
+
+  for (const candidate of enumerateAuthorStrings(author)) {
+    processString(candidate)
+  }
+
+  return Array.from(tokens).filter(Boolean)
+}
+
+function deriveAuthorProfile(
+  author: unknown,
+  fallbackName: string,
+  fallbackTokens: string[] = []
+): { name: string; tokens: string[] } {
+  const displayName = normaliseAuthorName(author, fallbackName)
+  const tokens = collectAuthorTokens(author, [...fallbackTokens, fallbackName, displayName])
+  return { name: displayName, tokens: Array.from(new Set(tokens)) }
+}
+
+function collectUserTokens(user: UserProfile): string[] {
+  return collectAuthorTokens(
+    { name: user.name, email: user.email },
+    [user.name, user.email]
+  )
+}
+
+type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings' | 'create-topic'
 
 type ToastState = ToastMessage | null
+
+function mergeTopicDetailResponse(
+  detail: TopicDetailResponse,
+  fallback: Topic | null
+): Topic {
+  const topicId = detail.id ?? fallback?.id ?? 0
+  const fallbackComments = fallback?.comments ?? []
+
+  const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
+    ? detail.comments.map((comment, index) => {
+        const backup = fallbackComments[index]
+        const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
+        const commentCreatedAt =
+          comment.created_at ??
+          comment.createdAt ??
+          backup?.createdAt ??
+          new Date().toISOString()
+
+        return {
+          id: comment.id ?? backup?.id ?? index,
+          author: normaliseAuthorName(comment.author ?? backup?.author, backup?.author ?? '匿名用户'),
+          body: commentBody,
+          createdAt: commentCreatedAt
+        }
+      })
+    : fallbackComments
+
+  const fallbackAuthor = fallback?.author ?? '未知'
+  const fallbackAuthorTokens = fallback?.authorTokens ?? []
+  const authorProfile = deriveAuthorProfile(
+    detail.author ?? fallbackAuthor,
+    fallbackAuthor,
+    fallbackAuthorTokens
+  )
+
+  return {
+    id: topicId,
+    title: detail.title ?? fallback?.title ?? `话题 ${topicId}`,
+    author: authorProfile.name,
+    authorTokens: authorProfile.tokens,
+    description: detail.description ?? fallback?.description ?? '',
+    closed: detail.closed ?? fallback?.closed ?? false,
+    likes: detail.likes ?? fallback?.likes,
+    comments: mappedComments
+  }
+}
 
 function App() {
   const [view, setView] = useState<View>('home')
@@ -124,6 +316,11 @@ function App() {
   const [settingsPassword, setSettingsPassword] = useState('')
   const [settingsConfirmPassword, setSettingsConfirmPassword] = useState('')
   const [settingsLoading, setSettingsLoading] = useState(false)
+  const [createTopicTitle, setCreateTopicTitle] = useState('')
+  const [createTopicDescription, setCreateTopicDescription] = useState('')
+  const [createTopicLoading, setCreateTopicLoading] = useState(false)
+  const [createTopicError, setCreateTopicError] = useState<string | null>(null)
+  const [closingTopicId, setClosingTopicId] = useState<number | null>(null)
 
   const showToast = useCallback((nextToast: ToastMessage, duration = 4000) => {
     setToast(nextToast)
@@ -143,13 +340,19 @@ function App() {
           typeof data !== 'string' &&
           Array.isArray((data as TopicsResponse).items)
         ) {
-          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => ({
-            id: item.id,
-            title: item.title ?? `话题 ${item.id}`,
-            author: item.author ?? '未知',
-            description: item.description ?? '',
-            comments: []
-          }))
+          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => {
+            const authorProfile = deriveAuthorProfile(item.author, '未知')
+            return {
+              id: item.id,
+              title: item.title ?? `话题 ${item.id}`,
+              author: authorProfile.name,
+              authorTokens: authorProfile.tokens,
+              description: item.description ?? '',
+              closed: item.closed ?? false,
+              likes: item.likes,
+              comments: []
+            }
+          })
 
           setAllTopics(apiTopics)
         } else if (!cancelled) {
@@ -181,6 +384,42 @@ function App() {
   const selectedTopic =
     selectedTopicId == null ? null : allTopics.find((topic) => topic.id === selectedTopicId) ?? null
 
+  const canCloseSelectedTopic = useMemo(() => {
+    if (!currentUser || !selectedTopic) {
+      return false
+    }
+
+    const topicTokens = new Set(
+      (selectedTopic.authorTokens ?? [])
+        .map((token) => token.trim().toLowerCase())
+        .filter((token) => token.length > 0)
+    )
+
+    if (!topicTokens.size) {
+      const fallbackToken = normaliseAuthorName(selectedTopic.author, '')
+        .trim()
+        .toLowerCase()
+      if (fallbackToken) {
+        topicTokens.add(fallbackToken)
+      }
+    }
+
+    if (!topicTokens.size) {
+      return false
+    }
+
+    const userTokens = collectUserTokens(currentUser)
+    for (const token of userTokens) {
+      if (topicTokens.has(token)) {
+        return true
+      }
+    }
+
+    return false
+  }, [currentUser, selectedTopic])
+
+  const isClosingSelectedTopic = selectedTopic ? closingTopicId === selectedTopic.id : false
+
   useEffect(() => {
     if (selectedTopicId == null) {
       return
@@ -200,35 +439,7 @@ function App() {
 
           setAllTopics((prevTopics) => {
             const fallbackTopic = prevTopics.find((topic) => topic.id === detail.id) ?? null
-
-            const fallbackComments: Topic['comments'] = fallbackTopic?.comments ?? []
-
-            const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
-              ? detail.comments.map((comment, index): Topic['comments'][number] => {
-                  const backup = fallbackComments[index]
-                  const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
-                  const commentCreatedAt =
-                    comment.created_at ??
-                    comment.createdAt ??
-                    backup?.createdAt ??
-                    new Date().toISOString()
-
-                  return {
-                    id: comment.id ?? backup?.id ?? index,
-                    author: comment.author ?? backup?.author ?? '匿名用户',
-                    body: commentBody,
-                    createdAt: commentCreatedAt
-                  }
-                })
-              : fallbackComments
-
-            const updatedTopic: Topic = {
-              id: detail.id,
-              title: detail.title ?? fallbackTopic?.title ?? `话题 ${detail.id}`,
-              author: detail.author ?? fallbackTopic?.author ?? '未知',
-              description: detail.description ?? fallbackTopic?.description ?? '',
-              comments: mappedComments
-            }
+            const updatedTopic = mergeTopicDetailResponse(detail, fallbackTopic)
 
             let found = false
             const nextTopics = prevTopics.map((topic) => {
@@ -298,6 +509,19 @@ function App() {
       return
     }
     setView('login')
+  }
+
+  const goToCreateTopic = () => {
+    if (!currentUser) {
+      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setView('login')
+      return
+    }
+    setCreateTopicTitle('')
+    setCreateTopicDescription('')
+    setCreateTopicError(null)
+    setCreateTopicLoading(false)
+    setView('create-topic')
   }
 
   const goToSignup = () => {
@@ -503,6 +727,167 @@ function App() {
     return emailInitial ? emailInitial.toUpperCase() : null
   }, [currentUser])
 
+  const handleCreateTopicSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentUser) {
+      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setView('login')
+      return
+    }
+
+    const trimmedTitle = createTopicTitle.trim()
+    const trimmedDescription = createTopicDescription.trim()
+
+    if (!trimmedTitle || !trimmedDescription) {
+      setCreateTopicError('请填写完整的话题信息。')
+      return
+    }
+
+    setCreateTopicLoading(true)
+    setCreateTopicError(null)
+
+    try {
+      const res = await createTopic({ title: trimmedTitle, description: trimmedDescription })
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.id != null
+
+      if (!ok) {
+        const message =
+          typeof res.data === 'string'
+            ? res.data
+            : (res.data as any)?.message || (res.data as any)?.error || '发布话题失败。'
+        setCreateTopicError(message)
+        showToast({ type: 'error', message })
+        return
+      }
+
+      const payload = res.data as any
+      const authorProfile = deriveAuthorProfile(
+        payload?.author ?? currentUser.name,
+        currentUser.name || '我',
+        [currentUser.email, currentUser.name]
+      )
+      const newTopic: Topic = {
+        id: payload?.id ?? Date.now(),
+        title: payload?.title ?? trimmedTitle,
+        author: authorProfile.name,
+        authorTokens: authorProfile.tokens,
+        description: payload?.description ?? trimmedDescription,
+        closed: payload?.closed ?? false,
+        likes: payload?.likes,
+        comments: []
+      }
+
+      setAllTopics((prevTopics) => {
+        const filtered = prevTopics.filter((topic) => topic.id !== newTopic.id)
+        return [newTopic, ...filtered]
+      })
+
+      showToast({ type: 'success', message: '话题发布成功！' }, 3000)
+
+      setCreateTopicTitle('')
+      setCreateTopicDescription('')
+      setView('topic')
+      setSelectedTopicId(newTopic.id)
+    } catch (_) {
+      const message = '发布话题时发生网络错误。'
+      setCreateTopicError(message)
+      showToast({ type: 'error', message })
+    } finally {
+      setCreateTopicLoading(false)
+    }
+  }
+
+  const handleCancelCreateTopic = () => {
+    setCreateTopicTitle('')
+    setCreateTopicDescription('')
+    setCreateTopicError(null)
+    goHome()
+  }
+
+  const handleCloseTopic = useCallback(
+    async (topicId: number) => {
+      if (!currentUser) {
+        showToast({ type: 'info', message: '请先登录后再关闭话题。' }, 3000)
+        setView('login')
+        return
+      }
+
+      if (closingTopicId === topicId) {
+        return
+      }
+
+      setClosingTopicId(topicId)
+      try {
+        const res = await closeTopic(topicId)
+        if (res.status === 200 && res.data && typeof res.data !== 'string') {
+          const detail = res.data as TopicDetailResponse
+          setAllTopics((prevTopics) => {
+            const fallbackTopic = prevTopics.find((topic) => topic.id === topicId) ?? null
+            const mergedTopic = mergeTopicDetailResponse(detail, fallbackTopic)
+            const finalTopic: Topic = { ...mergedTopic, closed: detail.closed ?? true }
+
+            let updated = false
+            const nextTopics = prevTopics.map((topic) => {
+              if (topic.id === finalTopic.id) {
+                updated = true
+                return finalTopic
+              }
+              return topic
+            })
+
+            if (!updated) {
+              return [...nextTopics, finalTopic]
+            }
+
+            return nextTopics
+          })
+
+          showToast({ type: 'success', message: '话题已关闭，新的评论将无法提交。' }, 3000)
+          return
+        }
+
+        const data = res.data
+        let errorMessage =
+          res.status === 401
+            ? '请先登录后再关闭话题。'
+            : res.status === 403
+            ? '只有发起人或管理员可以关闭该话题。'
+            : res.status === 404
+            ? '未找到该话题，无法关闭。'
+            : '关闭话题失败，请稍后再试。'
+
+        if (typeof data === 'string' && data.trim()) {
+          errorMessage = data
+        } else if (data && typeof data === 'object') {
+          const message =
+            (data as { message?: string; error?: string }).message ??
+            (data as { message?: string; error?: string }).error
+          if (message) {
+            errorMessage = message
+          }
+        }
+
+        showToast({ type: 'error', message: errorMessage }, 4000)
+
+        if (res.status === 401) {
+          setAuthToken(null)
+          setCurrentUser(null)
+          persistUserProfile(null)
+          setView('login')
+        }
+      } catch (_) {
+        showToast({ type: 'error', message: '关闭话题失败，请检查网络连接。' }, 4000)
+      } finally {
+        setClosingTopicId((prev) => (prev === topicId ? null : prev))
+      }
+    },
+    [closingTopicId, currentUser, showToast]
+  )
+
   return (
     <div className="app">
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
@@ -511,17 +896,27 @@ function App() {
         onHome={handleHomeClick}
         onLogin={goToLogin}
         onProfile={goToProfile}
+        onCreateTopic={goToCreateTopic}
         onSearchSubmit={handleSearchSubmit}
         onSearchTermChange={setSearchTerm}
         searchTerm={searchTerm}
         currentUser={currentUser}
         userInitial={userInitial}
+        canCreateTopic={Boolean(currentUser)}
       />
 
       <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
         {view === 'home' && <TopicsView topics={filteredTopics} onSelect={openTopic} />}
 
-        {view === 'topic' && selectedTopic && <TopicDetail topic={selectedTopic} onBack={goHome} />}
+        {view === 'topic' && selectedTopic && (
+          <TopicDetail
+            topic={selectedTopic}
+            onBack={goHome}
+            canCloseTopic={canCloseSelectedTopic && !selectedTopic.closed}
+            onCloseTopic={handleCloseTopic}
+            closingTopic={isClosingSelectedTopic}
+          />
+        )}
 
         {view === 'topic' && !selectedTopic && <TopicNotFound onBack={goHome} />}
 
@@ -565,6 +960,23 @@ function App() {
             onSubmit={handleAccountSettingsSubmit}
             onBack={goToProfile}
           />
+        )}
+
+        {view === 'create-topic' && currentUser && (
+          <CreateTopicPanel
+            title={createTopicTitle}
+            description={createTopicDescription}
+            loading={createTopicLoading}
+            error={createTopicError}
+            onTitleChange={setCreateTopicTitle}
+            onDescriptionChange={setCreateTopicDescription}
+            onSubmit={handleCreateTopicSubmit}
+            onCancel={handleCancelCreateTopic}
+          />
+        )}
+
+        {view === 'create-topic' && !currentUser && (
+          <LoginPanel onSubmit={handleLoginSubmit} onSignup={goToSignup} />
         )}
       </main>
     </div>
