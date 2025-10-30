@@ -125,6 +125,113 @@ function normaliseAuthorName(author: unknown, fallback = '未知'): string {
   return fallback
 }
 
+const AUTHOR_CANDIDATE_KEYS = ['username', 'name', 'author', 'email', 'displayName', 'id'] as const
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
+
+function enumerateAuthorStrings(author: unknown): string[] {
+  if (author == null) {
+    return []
+  }
+
+  if (typeof author === 'string' || typeof author === 'number' || typeof author === 'boolean') {
+    return [String(author)]
+  }
+
+  if (typeof author === 'object') {
+    const record = author as Record<string, unknown>
+    const values: string[] = []
+
+    for (const key of AUTHOR_CANDIDATE_KEYS) {
+      const value = record[key]
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        values.push(String(value))
+      }
+    }
+
+    const labelled = (record as { toString?: () => string }).toString?.()
+    if (labelled && labelled !== '[object Object]') {
+      values.push(labelled)
+    }
+
+    return values
+  }
+
+  return []
+}
+
+function collectAuthorTokens(
+  author: unknown,
+  fallbackValues: (string | null | undefined)[] = []
+): string[] {
+  const tokens = new Set<string>()
+
+  const addToken = (value: string | null | undefined) => {
+    if (!value) {
+      return
+    }
+    const trimmed = value.trim().toLowerCase()
+    if (trimmed) {
+      tokens.add(trimmed)
+    }
+  }
+
+  const processString = (value: string | null | undefined) => {
+    if (!value) {
+      return
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return
+    }
+
+    addToken(trimmed)
+
+    const emailMatches = trimmed.match(EMAIL_PATTERN)
+    if (emailMatches) {
+      for (const email of emailMatches) {
+        addToken(email)
+        const [localPart] = email.split('@')
+        addToken(localPart)
+      }
+    }
+
+    const beforeBracket = trimmed.split(/[\(<\[]/)[0]
+    addToken(beforeBracket)
+
+    const fragments = trimmed.split(/[^A-Za-z0-9@._+-]+/)
+    for (const fragment of fragments) {
+      addToken(fragment)
+    }
+  }
+
+  for (const fallback of fallbackValues) {
+    processString(fallback ?? undefined)
+  }
+
+  for (const candidate of enumerateAuthorStrings(author)) {
+    processString(candidate)
+  }
+
+  return Array.from(tokens).filter(Boolean)
+}
+
+function deriveAuthorProfile(
+  author: unknown,
+  fallbackName: string,
+  fallbackTokens: string[] = []
+): { name: string; tokens: string[] } {
+  const displayName = normaliseAuthorName(author, fallbackName)
+  const tokens = collectAuthorTokens(author, [...fallbackTokens, fallbackName, displayName])
+  return { name: displayName, tokens: Array.from(new Set(tokens)) }
+}
+
+function collectUserTokens(user: UserProfile): string[] {
+  return collectAuthorTokens(
+    { name: user.name, email: user.email },
+    [user.name, user.email]
+  )
+}
+
 type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings' | 'create-topic'
 
 type ToastState = ToastMessage | null
@@ -156,12 +263,18 @@ function mergeTopicDetailResponse(
     : fallbackComments
 
   const fallbackAuthor = fallback?.author ?? '未知'
-  const authorName = normaliseAuthorName(detail.author ?? fallbackAuthor, fallbackAuthor)
+  const fallbackAuthorTokens = fallback?.authorTokens ?? []
+  const authorProfile = deriveAuthorProfile(
+    detail.author ?? fallbackAuthor,
+    fallbackAuthor,
+    fallbackAuthorTokens
+  )
 
   return {
     id: topicId,
     title: detail.title ?? fallback?.title ?? `话题 ${topicId}`,
-    author: authorName,
+    author: authorProfile.name,
+    authorTokens: authorProfile.tokens,
     description: detail.description ?? fallback?.description ?? '',
     closed: detail.closed ?? fallback?.closed ?? false,
     likes: detail.likes ?? fallback?.likes,
@@ -227,15 +340,19 @@ function App() {
           typeof data !== 'string' &&
           Array.isArray((data as TopicsResponse).items)
         ) {
-          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => ({
-            id: item.id,
-            title: item.title ?? `话题 ${item.id}`,
-            author: normaliseAuthorName(item.author, '未知'),
-            description: item.description ?? '',
-            closed: item.closed ?? false,
-            likes: item.likes,
-            comments: []
-          }))
+          const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => {
+            const authorProfile = deriveAuthorProfile(item.author, '未知')
+            return {
+              id: item.id,
+              title: item.title ?? `话题 ${item.id}`,
+              author: authorProfile.name,
+              authorTokens: authorProfile.tokens,
+              description: item.description ?? '',
+              closed: item.closed ?? false,
+              likes: item.likes,
+              comments: []
+            }
+          })
 
           setAllTopics(apiTopics)
         } else if (!cancelled) {
@@ -272,18 +389,33 @@ function App() {
       return false
     }
 
-    const authorToken = normaliseAuthorName(selectedTopic.author, '').toLowerCase()
-    if (!authorToken) {
+    const topicTokens = new Set(
+      (selectedTopic.authorTokens ?? [])
+        .map((token) => token.trim().toLowerCase())
+        .filter((token) => token.length > 0)
+    )
+
+    if (!topicTokens.size) {
+      const fallbackToken = normaliseAuthorName(selectedTopic.author, '')
+        .trim()
+        .toLowerCase()
+      if (fallbackToken) {
+        topicTokens.add(fallbackToken)
+      }
+    }
+
+    if (!topicTokens.size) {
       return false
     }
 
-    const nameToken = normaliseAuthorName(currentUser.name, '').toLowerCase()
-    const emailToken = normaliseAuthorName(currentUser.email, '').toLowerCase()
+    const userTokens = collectUserTokens(currentUser)
+    for (const token of userTokens) {
+      if (topicTokens.has(token)) {
+        return true
+      }
+    }
 
-    const matchesName = Boolean(nameToken) && nameToken === authorToken
-    const matchesEmail = Boolean(emailToken) && emailToken === authorToken
-
-    return matchesName || matchesEmail
+    return false
   }, [currentUser, selectedTopic])
 
   const isClosingSelectedTopic = selectedTopic ? closingTopicId === selectedTopic.id : false
@@ -633,10 +765,16 @@ function App() {
       }
 
       const payload = res.data as any
+      const authorProfile = deriveAuthorProfile(
+        payload?.author ?? currentUser.name,
+        currentUser.name || '我',
+        [currentUser.email, currentUser.name]
+      )
       const newTopic: Topic = {
         id: payload?.id ?? Date.now(),
         title: payload?.title ?? trimmedTitle,
-        author: normaliseAuthorName(payload?.author ?? currentUser.name, currentUser.name ?? '我'),
+        author: authorProfile.name,
+        authorTokens: authorProfile.tokens,
         description: payload?.description ?? trimmedDescription,
         closed: payload?.closed ?? false,
         likes: payload?.likes,
