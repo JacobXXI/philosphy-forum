@@ -142,6 +142,20 @@ export async function login(input: LoginInput): Promise<ApiResult<LoginResponse 
   })
 }
 
+export type LogoutResponse = { status: 'ok' }
+
+export async function logout(): Promise<ApiResult<LogoutResponse | string>> {
+  // Send session in body if we have it; cookie will be included as well
+  const payload: { session_id?: string } = {}
+  if (authToken) {
+    payload.session_id = authToken
+  }
+  return jsonFetch<LogoutResponse | string>('/auth/logout', {
+    method: 'POST',
+    body: Object.keys(payload).length ? JSON.stringify(payload) : undefined
+  })
+}
+
 export type UpdateUserInput = {
   email: string
   username?: string

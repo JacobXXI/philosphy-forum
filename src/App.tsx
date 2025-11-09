@@ -4,6 +4,7 @@ import {
   fetchTopics,
   signup,
   login,
+  logout,
   updateUser,
   TopicsResponse,
   setAuthToken,
@@ -540,7 +541,12 @@ function App() {
     setView('settings')
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch (_) {
+      // ignore network errors on logout; still clear local state
+    }
     setAuthToken(null)
     setCurrentUser(null)
     persistUserProfile(null)
