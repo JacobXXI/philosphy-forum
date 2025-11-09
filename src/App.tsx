@@ -1,61 +1,310 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchTopics, signup, login, updateUser, TopicsResponse } from './request'
+import {
+  fetchTopics,
+  signup,
+  login,
+  logout,
+  updateUser,
+  TopicsResponse,
+  setAuthToken,
+  getAuthToken,
+  fetchTopicDetail,
+  TopicDetailResponse,
+  createTopic,
+  closeTopic
+} from './request'
+import { ToastMessage, Topic, UserProfile } from './types'
+import { Toast } from './components/Toast'
+import { TopBar } from './components/TopBar'
+import { TopicsView } from './components/TopicsView'
+import { TopicDetail } from './components/TopicDetail'
+import { TopicNotFound } from './components/TopicNotFound'
+import { LoginPanel } from './components/LoginPanel'
+import { SignupPanel } from './components/SignupPanel'
+import { ProfilePanel } from './components/ProfilePanel'
+import { AccountSettingsPanel } from './components/AccountSettingsPanel'
+import { CreateTopicPanel } from './components/CreateTopicPanel'
 
-type Topic = {
-  id: number
-  title: string
-  author: string
-  description: string
+const USER_STORAGE_KEY = 'philosophy-forum.current-user'
+const DEFAULT_USER_NAME = '已登录用户'
+
+function getUserStorage(): Storage | null {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return null
+  }
+  return window.localStorage
 }
 
-const exampleTopics: Topic[] = [
-  {
-    id: 101,
-    title: '我们能对任何事物有确定的认知吗？',
-    author: '阿米莉亚·沃茨',
-    description:
-      '在认知总被感知与诠释所中介的世界中，我们如何为确定性的主张辩护？'
-  },
-  {
-    id: 204,
-    title: '人工意识的伦理',
-    author: '拉维·库尔卡尼',
-    description:
-      '如果人工智能展现出意识，创造者与使用者需要承担怎样的道德责任？'
-  },
-  {
-    id: 317,
-    title: '美、艺术与主观性',
-    author: '陈丽娜',
-    description:
-      '美是否只是见仁见智，抑或我们可以有意义地讨论审美的客观标准？'
-  },
-  {
-    id: 422,
-    title: '自由意志的意义',
-    author: '加布里埃尔·纳萨尔',
-    description:
-      '决定论是否削弱我们的能动感，还是自由意志可以与有序的宇宙共存？'
-  },
-  {
-    id: 538,
-    title: '共同体、身份与正义',
-    author: '玛雅·罗德里格斯',
-    description:
-      '政治共同体应如何平衡个人权利与彼此之间的责任？'
+function sanitiseUserProfile(profile: Partial<UserProfile> | null | undefined): UserProfile | null {
+  if (!profile) {
+    return null
   }
-]
 
-type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings'
+  const name =
+    typeof profile.name === 'string' && profile.name.trim().length > 0
+      ? profile.name.trim()
+      : DEFAULT_USER_NAME
+  const email = typeof profile.email === 'string' ? profile.email : ''
+
+  return { name, email }
+}
+
+function loadStoredUserProfile(): UserProfile | null {
+  const storage = getUserStorage()
+  if (!storage) {
+    return null
+  }
+
+  try {
+    const raw = storage.getItem(USER_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as Partial<UserProfile> | null
+    return sanitiseUserProfile(parsed)
+  } catch (_) {
+    return null
+  }
+}
+
+function persistUserProfile(profile: UserProfile | null) {
+  const storage = getUserStorage()
+  if (!storage) {
+    return
+  }
+
+  if (!profile) {
+    storage.removeItem(USER_STORAGE_KEY)
+    return
+  }
+
+  try {
+    storage.setItem(USER_STORAGE_KEY, JSON.stringify(profile))
+  } catch (_) {
+    // Ignore storage quota or availability errors
+  }
+}
+
+function createFallbackUser(): UserProfile {
+  return { name: DEFAULT_USER_NAME, email: '' }
+}
+
+function normaliseAuthorName(author: unknown, fallback = '未知'): string {
+  if (typeof author === 'string') {
+    const trimmed = author.trim()
+    return trimmed || fallback
+  }
+
+  if (typeof author === 'number' || typeof author === 'boolean') {
+    const text = String(author).trim()
+    return text || fallback
+  }
+
+  if (author && typeof author === 'object') {
+    const record = author as Record<string, unknown>
+    const candidateKeys = ['username', 'name', 'author', 'email', 'displayName']
+    for (const key of candidateKeys) {
+      const value = record[key]
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed) {
+          return trimmed
+        }
+      }
+    }
+
+    const labelled = (record as { toString?: () => string }).toString?.()
+    if (labelled && labelled !== '[object Object]') {
+      const trimmed = labelled.trim()
+      if (trimmed) {
+        return trimmed
+      }
+    }
+  }
+
+  return fallback
+}
+
+const AUTHOR_CANDIDATE_KEYS = ['username', 'name', 'author', 'email', 'displayName', 'id'] as const
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
+
+function enumerateAuthorStrings(author: unknown): string[] {
+  if (author == null) {
+    return []
+  }
+
+  if (typeof author === 'string' || typeof author === 'number' || typeof author === 'boolean') {
+    return [String(author)]
+  }
+
+  if (typeof author === 'object') {
+    const record = author as Record<string, unknown>
+    const values: string[] = []
+
+    for (const key of AUTHOR_CANDIDATE_KEYS) {
+      const value = record[key]
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        values.push(String(value))
+      }
+    }
+
+    const labelled = (record as { toString?: () => string }).toString?.()
+    if (labelled && labelled !== '[object Object]') {
+      values.push(labelled)
+    }
+
+    return values
+  }
+
+  return []
+}
+
+function collectAuthorTokens(
+  author: unknown,
+  fallbackValues: (string | null | undefined)[] = []
+): string[] {
+  const tokens = new Set<string>()
+
+  const addToken = (value: string | null | undefined) => {
+    if (!value) {
+      return
+    }
+    const trimmed = value.trim().toLowerCase()
+    if (trimmed) {
+      tokens.add(trimmed)
+    }
+  }
+
+  const processString = (value: string | null | undefined) => {
+    if (!value) {
+      return
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return
+    }
+
+    addToken(trimmed)
+
+    const emailMatches = trimmed.match(EMAIL_PATTERN)
+    if (emailMatches) {
+      for (const email of emailMatches) {
+        addToken(email)
+        const [localPart] = email.split('@')
+        addToken(localPart)
+      }
+    }
+
+    const beforeBracket = trimmed.split(/[\(<\[]/)[0]
+    addToken(beforeBracket)
+
+    const fragments = trimmed.split(/[^A-Za-z0-9@._+-]+/)
+    for (const fragment of fragments) {
+      addToken(fragment)
+    }
+  }
+
+  for (const fallback of fallbackValues) {
+    processString(fallback ?? undefined)
+  }
+
+  for (const candidate of enumerateAuthorStrings(author)) {
+    processString(candidate)
+  }
+
+  return Array.from(tokens).filter(Boolean)
+}
+
+function deriveAuthorProfile(
+  author: unknown,
+  fallbackName: string,
+  fallbackTokens: string[] = []
+): { name: string; tokens: string[] } {
+  const displayName = normaliseAuthorName(author, fallbackName)
+  const tokens = collectAuthorTokens(author, [...fallbackTokens, fallbackName, displayName])
+  return { name: displayName, tokens: Array.from(new Set(tokens)) }
+}
+
+function collectUserTokens(user: UserProfile): string[] {
+  return collectAuthorTokens(
+    { name: user.name, email: user.email },
+    [user.name, user.email]
+  )
+}
+
+type View = 'home' | 'topic' | 'login' | 'signup' | 'profile' | 'settings' | 'create-topic'
+
+type ToastState = ToastMessage | null
+
+function mergeTopicDetailResponse(
+  detail: TopicDetailResponse,
+  fallback: Topic | null
+): Topic {
+  const topicId = detail.id ?? fallback?.id ?? 0
+  const fallbackComments = fallback?.comments ?? []
+
+  const mappedComments: Topic['comments'] = Array.isArray(detail.comments)
+    ? detail.comments.map((comment, index) => {
+        const backup = fallbackComments[index]
+        const commentBody = comment.content ?? comment.body ?? backup?.body ?? ''
+        const commentCreatedAt =
+          comment.created_at ??
+          comment.createdAt ??
+          backup?.createdAt ??
+          new Date().toISOString()
+
+        return {
+          id: comment.id ?? backup?.id ?? index,
+          author: normaliseAuthorName(comment.author ?? backup?.author, backup?.author ?? '匿名用户'),
+          body: commentBody,
+          createdAt: commentCreatedAt
+        }
+      })
+    : fallbackComments
+
+  const fallbackAuthor = fallback?.author ?? '未知'
+  const fallbackAuthorTokens = fallback?.authorTokens ?? []
+  const authorProfile = deriveAuthorProfile(
+    detail.author ?? fallbackAuthor,
+    fallbackAuthor,
+    fallbackAuthorTokens
+  )
+
+  return {
+    id: topicId,
+    title: detail.title ?? fallback?.title ?? `话题 ${topicId}`,
+    author: authorProfile.name,
+    authorTokens: authorProfile.tokens,
+    description: detail.description ?? fallback?.description ?? '',
+    closed: detail.closed ?? fallback?.closed ?? false,
+    likes: detail.likes ?? fallback?.likes,
+    comments: mappedComments
+  }
+}
 
 function App() {
   const [view, setView] = useState<View>('home')
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [allTopics, setAllTopics] = useState<Topic[]>(exampleTopics)
-  const [toast, setToast] = useState<{ type: 'error' | 'success' | 'info'; message: string } | null>(null)
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
+  const [allTopics, setAllTopics] = useState<Topic[]>([])
+  const [toast, setToast] = useState<ToastState>(null)
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const token = getAuthToken()
+    if (!token) {
+      return null
+    }
+
+    const stored = loadStoredUserProfile()
+    return stored ?? createFallbackUser()
+  })
+
+  useEffect(() => {
+    if (!currentUser && getAuthToken()) {
+      const stored = loadStoredUserProfile()
+      setCurrentUser(stored ?? createFallbackUser())
+    }
+  }, [currentUser])
 
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('')
@@ -68,6 +317,16 @@ function App() {
   const [settingsPassword, setSettingsPassword] = useState('')
   const [settingsConfirmPassword, setSettingsConfirmPassword] = useState('')
   const [settingsLoading, setSettingsLoading] = useState(false)
+  const [createTopicTitle, setCreateTopicTitle] = useState('')
+  const [createTopicDescription, setCreateTopicDescription] = useState('')
+  const [createTopicLoading, setCreateTopicLoading] = useState(false)
+  const [createTopicError, setCreateTopicError] = useState<string | null>(null)
+  const [closingTopicId, setClosingTopicId] = useState<number | null>(null)
+
+  const showToast = useCallback((nextToast: ToastMessage, duration = 4000) => {
+    setToast(nextToast)
+    setTimeout(() => setToast(null), duration)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -83,36 +342,26 @@ function App() {
           Array.isArray((data as TopicsResponse).items)
         ) {
           const apiTopics: Topic[] = (data as TopicsResponse).items.map((item) => {
-            const fallback = exampleTopics.find((topic) => topic.id === item.id)
+            const authorProfile = deriveAuthorProfile(item.author, '未知')
             return {
               id: item.id,
-              title: item.title ?? fallback?.title ?? `话题 ${item.id}`,
-              author: item.author ?? fallback?.author ?? '未知',
-              description: fallback?.description ?? ''
+              title: item.title ?? `话题 ${item.id}`,
+              author: authorProfile.name,
+              authorTokens: authorProfile.tokens,
+              description: item.description ?? '',
+              closed: item.closed ?? false,
+              likes: item.likes,
+              comments: []
             }
           })
 
-          // Merge API topics with examples by ID; API overrides, but keep example when missing
-          const merged = new Map<number, Topic>()
-          for (const ex of exampleTopics) merged.set(ex.id, ex)
-          for (const api of apiTopics) {
-            const existing = merged.get(api.id)
-            merged.set(api.id, {
-              id: api.id,
-              title: api.title ?? existing?.title ?? `话题 ${api.id}`,
-              author: api.author ?? existing?.author ?? '未知',
-              description: api.description ?? existing?.description ?? ''
-            })
-          }
-          setAllTopics(Array.from(merged.values()))
+          setAllTopics(apiTopics)
         } else if (!cancelled) {
-          setToast({ type: 'error', message: '获取话题失败，正在显示示例内容。' })
-          setTimeout(() => setToast(null), 4000)
+          showToast({ type: 'error', message: '获取话题失败，请稍后再试。' })
         }
       } catch (_) {
         if (!cancelled) {
-          setToast({ type: 'error', message: '获取话题失败，正在显示示例内容。' })
-          setTimeout(() => setToast(null), 4000)
+          showToast({ type: 'error', message: '获取话题失败，请稍后再试。' })
         }
       }
     }
@@ -120,7 +369,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [showToast])
 
   const filteredTopics = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
@@ -136,6 +385,102 @@ function App() {
   const selectedTopic =
     selectedTopicId == null ? null : allTopics.find((topic) => topic.id === selectedTopicId) ?? null
 
+  const canCloseSelectedTopic = useMemo(() => {
+    if (!currentUser || !selectedTopic) {
+      return false
+    }
+
+    const topicTokens = new Set(
+      (selectedTopic.authorTokens ?? [])
+        .map((token) => token.trim().toLowerCase())
+        .filter((token) => token.length > 0)
+    )
+
+    if (!topicTokens.size) {
+      const fallbackToken = normaliseAuthorName(selectedTopic.author, '')
+        .trim()
+        .toLowerCase()
+      if (fallbackToken) {
+        topicTokens.add(fallbackToken)
+      }
+    }
+
+    if (!topicTokens.size) {
+      return false
+    }
+
+    const userTokens = collectUserTokens(currentUser)
+    for (const token of userTokens) {
+      if (topicTokens.has(token)) {
+        return true
+      }
+    }
+
+    return false
+  }, [currentUser, selectedTopic])
+
+  const isClosingSelectedTopic = selectedTopic ? closingTopicId === selectedTopic.id : false
+
+  useEffect(() => {
+    if (selectedTopicId == null) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadTopicDetail = async (topicId: number) => {
+      try {
+        const result = await fetchTopicDetail(topicId)
+        if (cancelled) {
+          return
+        }
+
+        if (result.status === 200 && result.data && typeof result.data !== 'string') {
+          const detail = result.data as TopicDetailResponse
+
+          setAllTopics((prevTopics) => {
+            const fallbackTopic = prevTopics.find((topic) => topic.id === detail.id) ?? null
+            const updatedTopic = mergeTopicDetailResponse(detail, fallbackTopic)
+
+            let found = false
+            const nextTopics = prevTopics.map((topic) => {
+              if (topic.id === updatedTopic.id) {
+                found = true
+                return updatedTopic
+              }
+              return topic
+            })
+
+            if (!found) {
+              return [...nextTopics, updatedTopic]
+            }
+
+            return nextTopics
+          })
+          return
+        }
+
+        if (result.status === 404) {
+          showToast({ type: 'error', message: '未找到该话题。' })
+          setAllTopics((prevTopics) => prevTopics.filter((topic) => topic.id !== topicId))
+          return
+        }
+
+        showToast({ type: 'error', message: '加载话题详情时出错。' })
+      } catch (_) {
+        if (!cancelled) {
+          showToast({ type: 'error', message: '加载话题详情时出错。' })
+        }
+      }
+    }
+
+    loadTopicDetail(selectedTopicId)
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTopicId, showToast])
+
   const openTopic = (topicId: number) => {
     setSelectedTopicId(topicId)
     setView('topic')
@@ -144,6 +489,11 @@ function App() {
   const goHome = () => {
     setView('home')
     setSelectedTopicId(null)
+  }
+
+  const handleHomeClick = () => {
+    setSearchTerm('')
+    goHome()
   }
 
   const goToProfile = () => {
@@ -162,6 +512,19 @@ function App() {
     setView('login')
   }
 
+  const goToCreateTopic = () => {
+    if (!currentUser) {
+      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setView('login')
+      return
+    }
+    setCreateTopicTitle('')
+    setCreateTopicDescription('')
+    setCreateTopicError(null)
+    setCreateTopicLoading(false)
+    setView('create-topic')
+  }
+
   const goToSignup = () => {
     setView('signup')
   }
@@ -178,11 +541,17 @@ function App() {
     setView('settings')
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch (_) {
+      // ignore network errors on logout; still clear local state
+    }
+    setAuthToken(null)
     setCurrentUser(null)
+    persistUserProfile(null)
     goHome()
-    setToast({ type: 'success', message: '你已成功退出登录。' })
-    setTimeout(() => setToast(null), 3000)
+    showToast({ type: 'success', message: '你已成功退出登录。' }, 3000)
   }
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -224,21 +593,17 @@ function App() {
           : (res.data as any)?.message || (res.data as any)?.error || '注册失败。'
       setSignupMessage(msg)
       if (!ok) {
-        setToast({ type: 'error', message: msg || '注册失败。' })
-        setTimeout(() => setToast(null), 4000)
+        showToast({ type: 'error', message: msg || '注册失败。' })
       }
       if (ok) {
-        setToast({ type: 'success', message: msg })
-        setTimeout(() => setToast(null), 4000)
-        // Optionally clear fields on success
+        showToast({ type: 'success', message: msg })
         setSignupPassword('')
         setSignupConfirmPassword('')
       }
     } catch (e) {
       setSignupError(true)
       setSignupMessage('注册时发生网络错误。')
-      setToast({ type: 'error', message: '注册时发生网络错误。' })
-      setTimeout(() => setToast(null), 4000)
+      showToast({ type: 'error', message: '注册时发生网络错误。' })
     } finally {
       setSignupLoading(false)
     }
@@ -251,8 +616,7 @@ function App() {
     const email = (fd.get('email') as string | null)?.trim() || ''
     const password = (fd.get('password') as string | null) || ''
     if (!email || !password) {
-      setToast({ type: 'error', message: '请输入邮箱和密码。' })
-      setTimeout(() => setToast(null), 3000)
+      showToast({ type: 'error', message: '请输入邮箱和密码。' }, 3000)
       return
     }
     try {
@@ -267,45 +631,45 @@ function App() {
           typeof res.data === 'string'
             ? res.data
             : (res.data as any)?.message || (res.data as any)?.error || '登录失败。'
-        setToast({ type: 'error', message: msg })
-        setTimeout(() => setToast(null), 4000)
+        showToast({ type: 'error', message: msg })
+        setAuthToken(null)
+        persistUserProfile(null)
       } else {
         const payload = res.data as any
         const username = payload?.user?.username ?? payload?.user?.email ?? email ?? '朋友'
         const userEmail = payload?.user?.email ?? email
-        setToast({ type: 'success', message: `欢迎回来，${username}！` })
-        setTimeout(() => setToast(null), 3000)
-        setCurrentUser({
+        const sessionId = payload?.session_id ?? null
+        showToast({ type: 'success', message: `欢迎回来，${username}！` }, 3000)
+        setAuthToken(sessionId)
+        const nextUser: UserProfile = {
           name: username,
           email: userEmail
-        })
+        }
+        setCurrentUser(nextUser)
+        persistUserProfile(nextUser)
         goHome()
       }
     } catch (_) {
-      setToast({ type: 'error', message: '登录时发生网络错误。' })
-      setTimeout(() => setToast(null), 4000)
+      showToast({ type: 'error', message: '登录时发生网络错误。' })
     }
   }
 
   const handleAccountSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!currentUser) {
-      setToast({ type: 'error', message: '请先登录。' })
-      setTimeout(() => setToast(null), 4000)
+      showToast({ type: 'error', message: '请先登录。' })
       return
     }
 
     const trimmedName = settingsName.trim()
     if (!trimmedName) {
-      setToast({ type: 'error', message: '用户名不能为空。' })
-      setTimeout(() => setToast(null), 4000)
+      showToast({ type: 'error', message: '用户名不能为空。' })
       return
     }
 
     if (settingsPassword || settingsConfirmPassword) {
       if (settingsPassword !== settingsConfirmPassword) {
-        setToast({ type: 'error', message: '两次输入的密码不一致。' })
-        setTimeout(() => setToast(null), 4000)
+        showToast({ type: 'error', message: '两次输入的密码不一致。' })
         return
       }
     }
@@ -332,28 +696,28 @@ function App() {
           typeof res.data === 'string'
             ? res.data
             : (res.data as any)?.message || (res.data as any)?.error || '更新失败。'
-        setToast({ type: 'error', message })
-        setTimeout(() => setToast(null), 4000)
+        showToast({ type: 'error', message })
         return
       }
 
       const payloadUser = (res.data as any)?.user
       const updatedName = payloadUser?.username ?? trimmedName
       const updatedEmail = payloadUser?.email ?? currentUser.email
-      setCurrentUser({ name: updatedName, email: updatedEmail })
+      const nextProfile: UserProfile = {
+        name: updatedName,
+        email: updatedEmail
+      }
+      setCurrentUser(nextProfile)
+      persistUserProfile(nextProfile)
       setSettingsName(updatedName)
       setSettingsPassword('')
       setSettingsConfirmPassword('')
 
-      const successMessage = payload.password
-        ? '用户名和密码更新成功。'
-        : '用户名更新成功。'
-      setToast({ type: 'success', message: successMessage })
-      setTimeout(() => setToast(null), 3000)
+      const successMessage = payload.password ? '用户名和密码更新成功。' : '用户名更新成功。'
+      showToast({ type: 'success', message: successMessage }, 3000)
       setView('profile')
     } catch (_) {
-      setToast({ type: 'error', message: '更新账号信息时发生网络错误。' })
-      setTimeout(() => setToast(null), 4000)
+      showToast({ type: 'error', message: '更新账号信息时发生网络错误。' })
     } finally {
       setSettingsLoading(false)
     }
@@ -369,294 +733,256 @@ function App() {
     return emailInitial ? emailInitial.toUpperCase() : null
   }, [currentUser])
 
+  const handleCreateTopicSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentUser) {
+      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setView('login')
+      return
+    }
+
+    const trimmedTitle = createTopicTitle.trim()
+    const trimmedDescription = createTopicDescription.trim()
+
+    if (!trimmedTitle || !trimmedDescription) {
+      setCreateTopicError('请填写完整的话题信息。')
+      return
+    }
+
+    setCreateTopicLoading(true)
+    setCreateTopicError(null)
+
+    try {
+      const res = await createTopic({ title: trimmedTitle, description: trimmedDescription })
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        typeof res.data !== 'string' &&
+        (res.data as any)?.id != null
+
+      if (!ok) {
+        const message =
+          typeof res.data === 'string'
+            ? res.data
+            : (res.data as any)?.message || (res.data as any)?.error || '发布话题失败。'
+        setCreateTopicError(message)
+        showToast({ type: 'error', message })
+        return
+      }
+
+      const payload = res.data as any
+      const authorProfile = deriveAuthorProfile(
+        payload?.author ?? currentUser.name,
+        currentUser.name || '我',
+        [currentUser.email, currentUser.name]
+      )
+      const newTopic: Topic = {
+        id: payload?.id ?? Date.now(),
+        title: payload?.title ?? trimmedTitle,
+        author: authorProfile.name,
+        authorTokens: authorProfile.tokens,
+        description: payload?.description ?? trimmedDescription,
+        closed: payload?.closed ?? false,
+        likes: payload?.likes,
+        comments: []
+      }
+
+      setAllTopics((prevTopics) => {
+        const filtered = prevTopics.filter((topic) => topic.id !== newTopic.id)
+        return [newTopic, ...filtered]
+      })
+
+      showToast({ type: 'success', message: '话题发布成功！' }, 3000)
+
+      setCreateTopicTitle('')
+      setCreateTopicDescription('')
+      setView('topic')
+      setSelectedTopicId(newTopic.id)
+    } catch (_) {
+      const message = '发布话题时发生网络错误。'
+      setCreateTopicError(message)
+      showToast({ type: 'error', message })
+    } finally {
+      setCreateTopicLoading(false)
+    }
+  }
+
+  const handleCancelCreateTopic = () => {
+    setCreateTopicTitle('')
+    setCreateTopicDescription('')
+    setCreateTopicError(null)
+    goHome()
+  }
+
+  const handleCloseTopic = useCallback(
+    async (topicId: number) => {
+      if (!currentUser) {
+        showToast({ type: 'info', message: '请先登录后再关闭话题。' }, 3000)
+        setView('login')
+        return
+      }
+
+      if (closingTopicId === topicId) {
+        return
+      }
+
+      setClosingTopicId(topicId)
+      try {
+        const res = await closeTopic(topicId)
+        if (res.status === 200 && res.data && typeof res.data !== 'string') {
+          const detail = res.data as TopicDetailResponse
+          setAllTopics((prevTopics) => {
+            const fallbackTopic = prevTopics.find((topic) => topic.id === topicId) ?? null
+            const mergedTopic = mergeTopicDetailResponse(detail, fallbackTopic)
+            const finalTopic: Topic = { ...mergedTopic, closed: detail.closed ?? true }
+
+            let updated = false
+            const nextTopics = prevTopics.map((topic) => {
+              if (topic.id === finalTopic.id) {
+                updated = true
+                return finalTopic
+              }
+              return topic
+            })
+
+            if (!updated) {
+              return [...nextTopics, finalTopic]
+            }
+
+            return nextTopics
+          })
+
+          showToast({ type: 'success', message: '话题已关闭，新的评论将无法提交。' }, 3000)
+          return
+        }
+
+        const data = res.data
+        let errorMessage =
+          res.status === 401
+            ? '请先登录后再关闭话题。'
+            : res.status === 403
+            ? '只有发起人或管理员可以关闭该话题。'
+            : res.status === 404
+            ? '未找到该话题，无法关闭。'
+            : '关闭话题失败，请稍后再试。'
+
+        if (typeof data === 'string' && data.trim()) {
+          errorMessage = data
+        } else if (data && typeof data === 'object') {
+          const message =
+            (data as { message?: string; error?: string }).message ??
+            (data as { message?: string; error?: string }).error
+          if (message) {
+            errorMessage = message
+          }
+        }
+
+        showToast({ type: 'error', message: errorMessage }, 4000)
+
+        if (res.status === 401) {
+          setAuthToken(null)
+          setCurrentUser(null)
+          persistUserProfile(null)
+          setView('login')
+        }
+      } catch (_) {
+        showToast({ type: 'error', message: '关闭话题失败，请检查网络连接。' }, 4000)
+      } finally {
+        setClosingTopicId((prev) => (prev === topicId ? null : prev))
+      }
+    },
+    [closingTopicId, currentUser, showToast]
+  )
+
   return (
     <div className="app">
-      {toast && (
-        <div
-          className={`toast ${toast.type === 'error' ? 'toast--error' : toast.type === 'success' ? 'toast--success' : 'toast--info'}`}
-          role="alert"
-          aria-live="polite"
-        >
-          <span className="toast__msg">{toast.message}</span>
-          <button className="toast__close" onClick={() => setToast(null)} aria-label="关闭通知">
-            ×
-          </button>
-        </div>
-      )}
-      <header className="top-bar">
-        <button className="logo-button" onClick={goHome}>
-          <span className="logo-mark">Φ</span>
-          <span className="logo-text">哲学论坛</span>
-        </button>
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
-        <form className="search-form" onSubmit={handleSearchSubmit} role="search">
-          <label className="visually-hidden" htmlFor="topic-search">
-            通过编号或标题搜索话题
-          </label>
-          <input
-            id="topic-search"
-            type="search"
-            placeholder="通过话题编号或标题搜索"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-          <button type="submit">搜索</button>
-        </form>
+      <TopBar
+        onHome={handleHomeClick}
+        onLogin={goToLogin}
+        onProfile={goToProfile}
+        onCreateTopic={goToCreateTopic}
+        onSearchSubmit={handleSearchSubmit}
+        onSearchTermChange={setSearchTerm}
+        searchTerm={searchTerm}
+        currentUser={currentUser}
+        userInitial={userInitial}
+        canCreateTopic={Boolean(currentUser)}
+      />
 
-        {currentUser ? (
-          <button className="profile-chip" type="button" onClick={goToProfile} aria-label="前往个人资料">
-            <span className="profile-chip__initial" aria-hidden="true">
-              {userInitial ?? '访'}
-            </span>
-            <span className="profile-chip__name">{currentUser.name}</span>
-          </button>
-        ) : (
-          <button className="login-button" onClick={goToLogin}>
-            登录
-          </button>
-        )}
-      </header>
-
-      <main className="content" role="main">
-        {view === 'home' && (
-          <section className="topics" aria-labelledby="topics-heading">
-            <h1 id="topics-heading">讨论话题</h1>
-            <p className="topics-subtitle">
-              探索社区思想者提出的问题，并分享你的见解。
-            </p>
-
-            <ul className="topic-list">
-              {filteredTopics.map((topic) => (
-                <li key={topic.id} className="topic-card">
-                  <div className="topic-card__meta">
-                    <span className="topic-id">#{topic.id}</span>
-                    <span className="topic-author">作者：{topic.author}</span>
-                  </div>
-                  <h2>{topic.title}</h2>
-                  <p>{topic.description}</p>
-                  <button onClick={() => openTopic(topic.id)} className="topic-card__button">
-                    查看讨论
-                  </button>
-                </li>
-              ))}
-
-              {filteredTopics.length === 0 && (
-                <li className="empty-state">
-                  <h2>未找到相关话题</h2>
-                  <p>尝试使用不同的标题或编号进行搜索。</p>
-                </li>
-              )}
-            </ul>
-          </section>
-        )}
+      <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
+        {view === 'home' && <TopicsView topics={filteredTopics} onSelect={openTopic} />}
 
         {view === 'topic' && selectedTopic && (
-          <article className="topic-detail" aria-labelledby="topic-title">
-            <button className="back-link" onClick={goHome}>
-              ← 返回所有话题
-            </button>
-            <header className="topic-detail__header">
-              <span className="topic-id detail-id">话题 #{selectedTopic.id}</span>
-              <h1 id="topic-title">{selectedTopic.title}</h1>
-              <p className="topic-author detail-author">发起人：{selectedTopic.author}</p>
-            </header>
-            <p className="topic-description">{selectedTopic.description}</p>
-          </article>
+          <TopicDetail
+            topic={selectedTopic}
+            onBack={goHome}
+            canCloseTopic={canCloseSelectedTopic && !selectedTopic.closed}
+            onCloseTopic={handleCloseTopic}
+            closingTopic={isClosingSelectedTopic}
+          />
         )}
 
-        {view === 'topic' && !selectedTopic && (
-          <section className="empty-state">
-            <h2>未找到该话题</h2>
-            <p>你要查看的话题可能已被删除。</p>
-            <button onClick={goHome}>返回话题列表</button>
-          </section>
-        )}
+        {view === 'topic' && !selectedTopic && <TopicNotFound onBack={goHome} />}
 
-        {view === 'login' && (
-          <section className="login-panel" aria-labelledby="login-heading">
-            <h1 id="login-heading">欢迎回来</h1>
-            <p className="login-subtitle">登录以参与讨论。</p>
-            <form className="login-form" onSubmit={handleLoginSubmit}>
-              <label htmlFor="email">邮箱</label>
-              <input id="email" name="email" type="email" placeholder="you@example.com" />
-
-              <label htmlFor="password">密码</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                placeholder="请输入密码"
-              />
-
-              <button type="submit" className="login-submit">
-                登录
-              </button>
-            </form>
-            <p className="signup-prompt" role="note">
-              还没有账号？
-              <button type="button" className="signup-button" onClick={goToSignup}>
-                注册一个账号
-              </button>
-            </p>
-          </section>
-        )}
+        {view === 'login' && <LoginPanel onSubmit={handleLoginSubmit} onSignup={goToSignup} />}
 
         {view === 'signup' && (
-          <section className="signup-panel" aria-labelledby="signup-heading">
-            <h1 id="signup-heading">加入讨论</h1>
-            <p className="signup-subtitle">
-              创建你的论坛账号，与思想伙伴分享观点。
-            </p>
-            <form className="signup-form" onSubmit={handleSignupSubmit}>
-              <label htmlFor="signup-email">邮箱</label>
-              <input
-                id="signup-email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
-                value={signupEmail}
-                onChange={(e) => setSignupEmail(e.target.value)}
-                required
-              />
-
-              <label htmlFor="signup-password">密码</label>
-              <input
-                id="signup-password"
-                name="password"
-                type="password"
-                placeholder="请创建密码"
-                autoComplete="new-password"
-                value={signupPassword}
-                onChange={(e) => setSignupPassword(e.target.value)}
-                required
-              />
-
-              <label htmlFor="signup-confirm-password">确认密码</label>
-              <input
-                id="signup-confirm-password"
-                name="confirmPassword"
-                type="password"
-                placeholder="请再次输入密码"
-                autoComplete="new-password"
-                value={signupConfirmPassword}
-                onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                required
-              />
-
-              <button type="submit" className="signup-submit" disabled={signupLoading}>
-                {signupLoading ? '正在创建…' : '创建账号'}
-              </button>
-
-              {signupMessage && (
-                <p aria-live="polite" className={signupError ? 'error-text' : 'success-text'}>
-                  {signupMessage}
-                </p>
-              )}
-            </form>
-
-            <p className="login-prompt" role="note">
-              已经拥有账号？
-              <button type="button" className="login-link" onClick={goToLogin}>
-                前往登录
-              </button>
-            </p>
-          </section>
+          <SignupPanel
+            email={signupEmail}
+            password={signupPassword}
+            confirmPassword={signupConfirmPassword}
+            loading={signupLoading}
+            message={signupMessage}
+            hasError={signupError}
+            onEmailChange={setSignupEmail}
+            onPasswordChange={setSignupPassword}
+            onConfirmPasswordChange={setSignupConfirmPassword}
+            onSubmit={handleSignupSubmit}
+            onLoginLink={goToLogin}
+          />
         )}
 
         {view === 'profile' && currentUser && (
-          <section className="profile-panel" aria-labelledby="profile-heading">
-            <header className="profile-header">
-              <div className="profile-avatar" aria-hidden="true">
-                {userInitial ?? (currentUser.email?.charAt(0).toUpperCase() || '访')}
-              </div>
-              <div>
-                <h1 id="profile-heading">个人资料</h1>
-                <p className="profile-subtitle">查看你的账号信息并管理登录状态。</p>
-              </div>
-            </header>
-
-            <dl className="profile-info">
-              <div className="profile-info__row">
-                <dt>用户名</dt>
-                <dd>{currentUser.name}</dd>
-              </div>
-              <div className="profile-info__row">
-                <dt>邮箱</dt>
-                <dd>{currentUser.email}</dd>
-              </div>
-            </dl>
-
-            <div className="profile-actions">
-              <button type="button" className="profile-settings" onClick={goToAccountSettings}>
-                修改用户名或密码
-              </button>
-              <button type="button" className="profile-home" onClick={goHome}>
-                返回首页
-              </button>
-              <button type="button" className="profile-logout" onClick={handleLogout}>
-                退出登录
-              </button>
-            </div>
-          </section>
+          <ProfilePanel
+            user={currentUser}
+            userInitial={userInitial}
+            onAccountSettings={goToAccountSettings}
+            onHome={goHome}
+            onLogout={handleLogout}
+          />
         )}
 
         {view === 'settings' && currentUser && (
-          <section className="account-settings-panel" aria-labelledby="settings-heading">
-            <button type="button" className="back-link" onClick={goToProfile}>
-              ← 返回个人资料
-            </button>
-            <h1 id="settings-heading">更新账号信息</h1>
-            <p className="account-settings-subtitle">修改显示名称或更新你的登录密码。</p>
+          <AccountSettingsPanel
+            name={settingsName}
+            password={settingsPassword}
+            confirmPassword={settingsConfirmPassword}
+            loading={settingsLoading}
+            onNameChange={setSettingsName}
+            onPasswordChange={setSettingsPassword}
+            onConfirmPasswordChange={setSettingsConfirmPassword}
+            onSubmit={handleAccountSettingsSubmit}
+            onBack={goToProfile}
+          />
+        )}
 
-            <form className="account-settings-form" onSubmit={handleAccountSettingsSubmit}>
-              <label htmlFor="settings-name">用户名</label>
-              <input
-                id="settings-name"
-                name="name"
-                type="text"
-                value={settingsName}
-                onChange={(event) => setSettingsName(event.target.value)}
-                placeholder="请输入新的用户名"
-                required
-              />
+        {view === 'create-topic' && currentUser && (
+          <CreateTopicPanel
+            title={createTopicTitle}
+            description={createTopicDescription}
+            loading={createTopicLoading}
+            error={createTopicError}
+            onTitleChange={setCreateTopicTitle}
+            onDescriptionChange={setCreateTopicDescription}
+            onSubmit={handleCreateTopicSubmit}
+            onCancel={handleCancelCreateTopic}
+          />
+        )}
 
-              <label htmlFor="settings-password">新密码</label>
-              <input
-                id="settings-password"
-                name="password"
-                type="password"
-                value={settingsPassword}
-                onChange={(event) => setSettingsPassword(event.target.value)}
-                placeholder="不修改则留空"
-                autoComplete="new-password"
-              />
-
-              <label htmlFor="settings-confirm-password">确认新密码</label>
-              <input
-                id="settings-confirm-password"
-                name="confirmPassword"
-                type="password"
-                value={settingsConfirmPassword}
-                onChange={(event) => setSettingsConfirmPassword(event.target.value)}
-                placeholder="请再次输入新密码"
-                autoComplete="new-password"
-              />
-
-              <div className="account-settings-actions">
-                <button type="button" className="account-settings-cancel" onClick={goToProfile}>
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className="account-settings-submit"
-                  disabled={settingsLoading}
-                >
-                  {settingsLoading ? '保存中…' : '保存修改'}
-                </button>
-              </div>
-            </form>
-          </section>
+        {view === 'create-topic' && !currentUser && (
+          <LoginPanel onSubmit={handleLoginSubmit} onSignup={goToSignup} />
         )}
       </main>
     </div>
