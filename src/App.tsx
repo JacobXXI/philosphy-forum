@@ -589,7 +589,7 @@ function App() {
         typeof res.data === 'string'
           ? res.data
           : ok
-          ? '账号已创建，现在可以登录。'
+          ? '验证邮件已发送到你的 Gmail'
           : (res.data as any)?.message || (res.data as any)?.error || '注册失败。'
       setSignupMessage(msg)
       if (!ok) {
