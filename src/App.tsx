@@ -911,7 +911,12 @@ function App() {
         canCreateTopic={Boolean(currentUser)}
       />
 
-      <main className={`content${view === 'topic' ? ' content--topic' : ''}`} role="main">
+      <main
+        className={`content${view === 'topic' ? ' content--topic' : ''}${
+          view === 'create-topic' ? ' content--create-topic' : ''
+        }`}
+        role="main"
+      >
         {view === 'home' && <TopicsView topics={filteredTopics} onSelect={openTopic} />}
 
         {view === 'topic' && selectedTopic && (

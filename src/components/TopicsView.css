@@ -30,6 +30,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.topic-card:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.08);
 }
 
 .topic-card__status {
@@ -63,21 +71,7 @@
 }
 
 .topic-card__button {
-  align-self: flex-start;
-  margin-top: 0.5rem;
-  padding: 0.5rem 1.2rem;
-  border-radius: 999px;
-  border: none;
-  background: #111827;
-  color: #f8fafc;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
-}
-
-.topic-card__button:hover {
-  background: #1f2937;
-  transform: translateY(-1px);
+  display: none;
 }
 
 .empty-state {

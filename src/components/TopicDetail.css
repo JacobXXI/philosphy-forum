@@ -92,6 +92,7 @@
   font-size: 1.05rem;
   line-height: 1.7;
   color: #364152;
+  white-space: pre-line;
 }
 
 .comments-section {

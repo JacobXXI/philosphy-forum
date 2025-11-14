@@ -14,7 +14,19 @@ export function TopicsView({ topics, onSelect }: TopicsViewProps) {
 
       <ul className="topic-list">
         {topics.map((topic) => (
-          <li key={topic.id} className="topic-card">
+          <li
+            key={topic.id}
+            className="topic-card"
+            onClick={() => onSelect(topic.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(topic.id)
+              }
+            }}
+          >
             <div className="topic-card__meta">
               <span className="topic-id">#{topic.id}</span>
               <span className="topic-author">作者：{topic.author}</span>

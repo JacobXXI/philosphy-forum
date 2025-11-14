@@ -1,5 +1,5 @@
 .create-topic-panel {
-  width: min(600px, 100%);
+  width: 100%;
   background: #ffffff;
   padding: 3rem;
   border-radius: 1.5rem;
@@ -36,13 +36,21 @@
   border: 1px solid #cbd5f5;
   background: #f8fafc;
   font-size: 1rem;
+  font-family: inherit;
   resize: vertical;
   min-height: 3rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .create-topic-form textarea {
-  min-height: 8rem;
+  min-height: 18rem;
+  max-height: 70vh;
+  line-height: 1.6;
+  overflow: auto;
+}
+
+.create-topic-form textarea::placeholder {
+  color: #94a3b8;
 }
 
 .create-topic-form input:focus,
@@ -102,9 +110,25 @@
   box-shadow: none;
 }
 
+.create-topic-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-top: -0.5rem;
+}
+
+.create-topic-count {
+  color: #475569;
+}
+
 @media (max-width: 768px) {
   .create-topic-panel {
     padding: 2.25rem 1.75rem;
+  }
+  .create-topic-form textarea {
+    min-height: 12rem;
   }
 
   .create-topic-actions {

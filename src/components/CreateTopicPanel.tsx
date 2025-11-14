@@ -1,4 +1,4 @@
-import { FormEvent } from 'react'
+import { FormEvent, useEffect, useRef } from 'react'
 import './CreateTopicPanel.css'
 
 type CreateTopicPanelProps = {
@@ -22,6 +22,18 @@ export function CreateTopicPanel({
   onSubmit,
   onCancel
 }: CreateTopicPanelProps) {
+  const descRef = useRef<HTMLTextAreaElement | null>(null)
+
+  useEffect(() => {
+    const el = descRef.current
+    if (!el) return
+    // Auto-resize height to content up to 70% of viewport height
+    el.style.height = 'auto'
+    const max = Math.floor(window.innerHeight * 0.7)
+    const next = Math.min(el.scrollHeight, max)
+    el.style.height = `${next}px`
+  }, [description])
+
   return (
     <section className="create-topic-panel" aria-labelledby="create-topic-heading">
       <h1 id="create-topic-heading">发起新话题</h1>
@@ -47,13 +59,19 @@ export function CreateTopicPanel({
           <textarea
             id="create-topic-description"
             name="description"
-            placeholder="简要介绍你想讨论的观点或提出的问题。"
+            placeholder="详细阐述你的观点或问题，建议写成一个完整段落。"
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
+            ref={descRef}
             rows={6}
             required
           />
         </label>
+
+        <div className="create-topic-meta" aria-live="polite">
+          <span className="create-topic-hint">建议写成完整段落，支持长文本。</span>
+          <span className="create-topic-count">{description.length} 字</span>
+        </div>
 
         {error && (
           <p role="alert" className="create-topic-error">
