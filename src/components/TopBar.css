@@ -28,16 +28,12 @@
 }
 
 .logo-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 2.25rem;
   height: 2.25rem;
-  border-radius: 999px;
-  background: #4338ca;
-  color: #f8fafc;
-  font-weight: 700;
-  font-size: 1.25rem;
+  border-radius: 50%;
+  overflow: hidden;
+  object-fit: cover;
 }
 
 .logo-text {
@@ -68,21 +64,6 @@
   outline: none;
   border-color: #4338ca;
   box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.2);
-}
-
-.search-form button {
-  padding: 0.6rem 1.5rem;
-  border-radius: 999px;
-  border: none;
-  background: #4338ca;
-  color: #f8fafc;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.search-form button:hover {
-  background: #3730a3;
 }
 
 .top-bar__actions {

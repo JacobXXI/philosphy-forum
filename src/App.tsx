@@ -749,6 +749,13 @@ function App() {
       return
     }
 
+    const confirmed = window.confirm(
+      '确认发布吗？你不能再更改内容'
+    )
+    if (!confirmed) {
+      return
+    }
+
     setCreateTopicLoading(true)
     setCreateTopicError(null)
 

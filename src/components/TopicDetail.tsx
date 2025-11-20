@@ -98,7 +98,7 @@ export function TopicDetail({
       if (result.status === 201) {
         setResponseDraft('')
         setIsResponding(false)
-        setResponseNotice('感谢你的回应！我们会尽快审核并与社区分享。')
+        setResponseNotice('感谢你的回应！')
         return
       }
 
@@ -158,7 +158,7 @@ export function TopicDetail({
       </header>
       <p className="topic-description">{topic.description}</p>
       <section className="comments-section" aria-labelledby="comments-heading">
-        <h2 id="comments-heading">社区回应</h2>
+        <h2 id="comments-heading">回应</h2>
         {topic.closed && (
           <p className="topic-closed-message" role="status" aria-live="polite">
             该话题已关闭，新的评论将无法提交。

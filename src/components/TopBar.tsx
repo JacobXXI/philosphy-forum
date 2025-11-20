@@ -1,6 +1,7 @@
 import { FormEvent } from 'react'
 import { UserProfile } from '../types'
 import './TopBar.css'
+import PhfLogo from '../assets/Phf-logo.png'
 
 type TopBarProps = {
   onHome: () => void
@@ -30,22 +31,21 @@ export function TopBar({
   return (
     <header className="top-bar">
       <button className="logo-button" onClick={onHome}>
-        <span className="logo-mark">Φ</span>
-        <span className="logo-text">哲学论坛</span>
+        <img src={PhfLogo} alt="思航" className="logo-mark" />
+        <span className="logo-text">思航</span>
       </button>
 
       <form className="search-form" onSubmit={onSearchSubmit} role="search">
         <label className="visually-hidden" htmlFor="topic-search">
-          通过编号或标题搜索话题
+          搜索话题
         </label>
         <input
           id="topic-search"
           type="search"
-          placeholder="通过话题编号或标题搜索"
+          placeholder="搜索话题..."
           value={searchTerm}
           onChange={(event) => onSearchTermChange(event.target.value)}
         />
-        <button type="submit">搜索</button>
       </form>
 
       <div className="top-bar__actions">
@@ -53,21 +53,27 @@ export function TopBar({
           className="create-topic-button"
           type="button"
           onClick={onCreateTopic}
-          aria-label="发起新的讨论话题"
+          aria-label="创建新话题"
           aria-disabled={!canCreateTopic}
+          disabled={!canCreateTopic}
         >
-          创建话题
+          新话题
         </button>
 
         {currentUser ? (
-          <button className="profile-chip" type="button" onClick={onProfile} aria-label="前往个人资料">
+          <button
+            className="profile-chip"
+            type="button"
+            onClick={onProfile}
+            aria-label="打开个人资料"
+          >
             <span className="profile-chip__initial" aria-hidden="true">
-              {userInitial ?? '访'}
+              {userInitial ?? '？'}
             </span>
             <span className="profile-chip__name">{currentUser.name}</span>
           </button>
         ) : (
-          <button className="login-button" onClick={onLogin}>
+          <button className="login-button" type="button" onClick={onLogin}>
             登录
           </button>
         )}

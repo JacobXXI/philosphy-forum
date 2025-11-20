@@ -37,8 +37,6 @@ export function CreateTopicPanel({
   return (
     <section className="create-topic-panel" aria-labelledby="create-topic-heading">
       <h1 id="create-topic-heading">发起新话题</h1>
-      <p className="create-topic-subtitle">分享你的思考，与社区展开新的讨论。</p>
-
       <form className="create-topic-form" onSubmit={onSubmit}>
         <label htmlFor="create-topic-title">
           话题标题

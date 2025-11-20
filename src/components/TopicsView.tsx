@@ -9,9 +9,6 @@ type TopicsViewProps = {
 export function TopicsView({ topics, onSelect }: TopicsViewProps) {
   return (
     <section className="topics" aria-labelledby="topics-heading">
-      <h1 id="topics-heading">讨论话题</h1>
-      <p className="topics-subtitle">探索社区思想者提出的问题，并分享你的见解。</p>
-
       <ul className="topic-list">
         {topics.map((topic) => (
           <li
