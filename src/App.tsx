@@ -12,7 +12,9 @@ import {
   fetchTopicDetail,
   TopicDetailResponse,
   createTopic,
-  closeTopic
+  closeTopic,
+  fetchUserMessage,
+  clearUserMessage
 } from './request'
 import { ToastMessage, Topic, UserProfile } from './types'
 import { Toast } from './components/Toast'
@@ -25,6 +27,7 @@ import { SignupPanel } from './components/SignupPanel'
 import { ProfilePanel } from './components/ProfilePanel'
 import { AccountSettingsPanel } from './components/AccountSettingsPanel'
 import { CreateTopicPanel } from './components/CreateTopicPanel'
+import { MessageBanner } from './components/MessageBanner'
 
 const USER_STORAGE_KEY = 'philosophy-forum.current-user'
 const DEFAULT_USER_NAME = '已登录用户'
@@ -322,6 +325,8 @@ function App() {
   const [createTopicLoading, setCreateTopicLoading] = useState(false)
   const [createTopicError, setCreateTopicError] = useState<string | null>(null)
   const [closingTopicId, setClosingTopicId] = useState<number | null>(null)
+  const [userMessage, setUserMessage] = useState<string | null>(null)
+  const [showMessages, setShowMessages] = useState(false)
 
   const showToast = useCallback((nextToast: ToastMessage, duration = 4000) => {
     setToast(nextToast)
@@ -482,11 +487,13 @@ function App() {
   }, [selectedTopicId, showToast])
 
   const openTopic = (topicId: number) => {
+    setShowMessages(false)
     setSelectedTopicId(topicId)
     setView('topic')
   }
 
   const goHome = () => {
+    setShowMessages(false)
     setView('home')
     setSelectedTopicId(null)
   }
@@ -498,10 +505,21 @@ function App() {
 
   const goToProfile = () => {
     if (!currentUser) {
+      setShowMessages(false)
       setView('login')
       return
     }
+    setShowMessages(false)
     setView('profile')
+  }
+
+  const handleMessagesClick = () => {
+    if (!currentUser) {
+      showToast({ type: 'info', message: 'Please log in to view messages.' }, 3000)
+      setView('login')
+      return
+    }
+    setShowMessages((prev) => !prev)
   }
 
   const goToLogin = () => {
@@ -509,15 +527,18 @@ function App() {
       goToProfile()
       return
     }
+    setShowMessages(false)
     setView('login')
   }
 
   const goToCreateTopic = () => {
     if (!currentUser) {
       showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      setShowMessages(false)
       setView('login')
       return
     }
+    setShowMessages(false)
     setCreateTopicTitle('')
     setCreateTopicDescription('')
     setCreateTopicError(null)
@@ -526,14 +547,17 @@ function App() {
   }
 
   const goToSignup = () => {
+    setShowMessages(false)
     setView('signup')
   }
 
   const goToAccountSettings = () => {
     if (!currentUser) {
+      setShowMessages(false)
       setView('login')
       return
     }
+    setShowMessages(false)
     setSettingsLoading(false)
     setSettingsName(currentUser.name ?? '')
     setSettingsPassword('')
@@ -550,6 +574,8 @@ function App() {
     setAuthToken(null)
     setCurrentUser(null)
     persistUserProfile(null)
+    setShowMessages(false)
+    setUserMessage(null)
     goHome()
     showToast({ type: 'success', message: '你已成功退出登录。' }, 3000)
   }
@@ -648,6 +674,7 @@ function App() {
         setCurrentUser(nextUser)
         persistUserProfile(nextUser)
         goHome()
+        refreshUserMessage()
       }
     } catch (_) {
       showToast({ type: 'error', message: '登录时发生网络错误。' })
@@ -733,10 +760,66 @@ function App() {
     return emailInitial ? emailInitial.toUpperCase() : null
   }, [currentUser])
 
+  const refreshUserMessage = useCallback(async () => {
+    if (!currentUser) {
+      setUserMessage(null)
+      return
+    }
+    try {
+      const res = await fetchUserMessage()
+      if (res.status === 401) {
+        setAuthToken(null)
+        setCurrentUser(null)
+        persistUserProfile(null)
+        setUserMessage(null)
+        return
+      }
+      if (res.status === 200 && res.data && typeof res.data !== 'string') {
+        const data = res.data as any
+        const hasMessage = Boolean(data?.has_message)
+        const messageText = typeof data?.message === 'string' ? data.message : ''
+        setUserMessage(hasMessage ? messageText : null)
+      }
+    } catch (_) {
+      // ignore passive polling errors
+    }
+  }, [currentUser])
+
+  const handleDismissUserMessage = useCallback(async () => {
+    if (!currentUser) {
+      setUserMessage(null)
+      return
+    }
+    setUserMessage(null)
+    try {
+      await clearUserMessage()
+    } catch (_) {
+      // already dismissed locally
+    }
+  }, [currentUser])
+
+  useEffect(() => {
+    if (!currentUser) {
+      setUserMessage(null)
+      return
+    }
+    refreshUserMessage()
+  }, [currentUser, refreshUserMessage])
+
+  useEffect(() => {
+    if (!currentUser) return
+    const id = window.setInterval(() => {
+      refreshUserMessage()
+    }, 15000)
+    return () => {
+      window.clearInterval(id)
+    }
+  }, [currentUser, refreshUserMessage])
+
   const handleCreateTopicSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!currentUser) {
-      showToast({ type: 'info', message: '请先登录后再创建话题。' }, 3000)
+      showToast({ type: 'info', message: 'Please log in to create a topic.' }, 3000)
       setView('login')
       return
     }
@@ -745,13 +828,11 @@ function App() {
     const trimmedDescription = createTopicDescription.trim()
 
     if (!trimmedTitle || !trimmedDescription) {
-      setCreateTopicError('请填写完整的话题信息。')
+      setCreateTopicError('Title and description are required.')
       return
     }
 
-    const confirmed = window.confirm(
-      '确认发布吗？你不能再更改内容'
-    )
+    const confirmed = window.confirm('Submit this topic for AI review?')
     if (!confirmed) {
       return
     }
@@ -761,26 +842,54 @@ function App() {
 
     try {
       const res = await createTopic({ title: trimmedTitle, description: trimmedDescription })
-      const ok =
+      const data = res.data
+
+      const isPending =
+        res.status === 202 &&
+        data &&
+        typeof data !== 'string' &&
+        (((data as any)?.status || '').toLowerCase() === 'pending' || (data as any)?.job_id)
+
+      const isCreated =
         res.status >= 200 &&
         res.status < 300 &&
-        typeof res.data !== 'string' &&
-        (res.data as any)?.id != null
+        data &&
+        typeof data !== 'string' &&
+        (data as any)?.id != null
 
-      if (!ok) {
-        const message =
-          typeof res.data === 'string'
-            ? res.data
-            : (res.data as any)?.message || (res.data as any)?.error || '发布话题失败。'
-        setCreateTopicError(message)
-        showToast({ type: 'error', message })
+      if (isPending) {
+        showToast(
+          { type: 'info', message: 'Topic submitted for AI review. You will be notified when it is live.' },
+          4500
+        )
+        setCreateTopicTitle('')
+        setCreateTopicDescription('')
+        setSelectedTopicId(null)
+        setView('home')
+        refreshUserMessage()
         return
       }
 
-      const payload = res.data as any
+      if (!isCreated) {
+        const message =
+          typeof data === 'string'
+            ? data
+            : (data as any)?.message || (data as any)?.error || (data as any)?.detail || 'Topic submission failed'
+        setCreateTopicError(message)
+        showToast({ type: 'error', message })
+        if (res.status === 401) {
+          setAuthToken(null)
+          setCurrentUser(null)
+          persistUserProfile(null)
+          setView('login')
+        }
+        return
+      }
+
+      const payload = data as any
       const authorProfile = deriveAuthorProfile(
         payload?.author ?? currentUser.name,
-        currentUser.name || '我',
+        currentUser.name || 'unknown',
         [currentUser.email, currentUser.name]
       )
       const newTopic: Topic = {
@@ -799,21 +908,21 @@ function App() {
         return [newTopic, ...filtered]
       })
 
-      showToast({ type: 'success', message: '话题发布成功！' }, 3000)
+      showToast({ type: 'success', message: 'Topic created successfully.' }, 3000)
 
       setCreateTopicTitle('')
       setCreateTopicDescription('')
       setView('topic')
       setSelectedTopicId(newTopic.id)
+      refreshUserMessage()
     } catch (_) {
-      const message = '发布话题时发生网络错误。'
+      const message = 'Topic submission failed. Please try again.'
       setCreateTopicError(message)
       showToast({ type: 'error', message })
     } finally {
       setCreateTopicLoading(false)
     }
   }
-
   const handleCancelCreateTopic = () => {
     setCreateTopicTitle('')
     setCreateTopicDescription('')
@@ -907,6 +1016,7 @@ function App() {
 
       <TopBar
         onHome={handleHomeClick}
+        onDashboard={handleMessagesClick}
         onLogin={goToLogin}
         onProfile={goToProfile}
         onCreateTopic={goToCreateTopic}
@@ -917,6 +1027,33 @@ function App() {
         userInitial={userInitial}
         canCreateTopic={Boolean(currentUser)}
       />
+
+      {currentUser && userMessage && userMessage.trim() && (
+        <MessageBanner message={userMessage} onDismiss={handleDismissUserMessage} />
+      )}
+
+      {currentUser && showMessages && (
+        <section className="message-panel" aria-label="消息">
+          <div className="message-panel__header">
+            <h2>消息</h2>
+            <button type="button" className="message-panel__close" onClick={() => setShowMessages(false)}>
+              关闭
+            </button>
+          </div>
+          {userMessage && userMessage.trim() ? (
+            <div className="message-panel__body">
+              <p>{userMessage}</p>
+              <button type="button" className="message-panel__action" onClick={handleDismissUserMessage}>
+                标记已读
+              </button>
+            </div>
+          ) : (
+            <div className="message-panel__body message-panel__body--empty">
+              <p>暂无新消息。</p>
+            </div>
+          )}
+        </section>
+      )}
 
       <main
         className={`content${view === 'topic' ? ' content--topic' : ''}${

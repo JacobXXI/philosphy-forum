@@ -72,6 +72,27 @@
   gap: 0.75rem;
 }
 
+.dashboard-button {
+  padding: 0.5rem 1.05rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #111827;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.dashboard-button:hover {
+  background: #eef2ff;
+  border-color: #4338ca;
+  transform: translateY(-1px);
+}
+
+.dashboard-button:active {
+  transform: translateY(0);
+}
+
 .create-topic-button {
   padding: 0.55rem 1.2rem;
   border-radius: 999px;

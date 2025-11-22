@@ -5,6 +5,7 @@ import PhfLogo from '../assets/Phf-logo.png'
 
 type TopBarProps = {
   onHome: () => void
+  onDashboard: () => void
   onLogin: () => void
   onProfile: () => void
   onCreateTopic: () => void
@@ -18,6 +19,7 @@ type TopBarProps = {
 
 export function TopBar({
   onHome,
+  onDashboard,
   onLogin,
   onProfile,
   onCreateTopic,
@@ -49,6 +51,9 @@ export function TopBar({
       </form>
 
       <div className="top-bar__actions">
+        <button className="dashboard-button" type="button" onClick={onDashboard} aria-label="消息">
+          消息
+        </button>
         <button
           className="create-topic-button"
           type="button"

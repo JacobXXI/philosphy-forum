@@ -25,3 +25,7 @@ export type UserProfile = {
   name: string
   email: string
 }
+
+export type UserMessage = {
+  message: string
+}

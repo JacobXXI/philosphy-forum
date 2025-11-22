@@ -236,9 +236,15 @@ export type CreateTopicResponse = {
   likes?: number
 }
 
+export type CreateTopicPendingResponse = {
+  status?: string
+  job_id?: string
+  detail?: string
+}
+
 export async function createTopic(
   input: CreateTopicInput
-): Promise<ApiResult<CreateTopicResponse | ApiMessage | string>> {
+): Promise<ApiResult<CreateTopicResponse | CreateTopicPendingResponse | ApiMessage | string>> {
   const payload: { title: string; description: string; session_id?: string } = {
     title: input.title,
     description: input.description
@@ -290,5 +296,22 @@ export async function closeTopic(
   return jsonFetch<CloseTopicResponse | ApiMessage | string>(`/topics/${topicId}/close`, {
     method: 'POST',
     body: Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined
+  })
+}
+
+export type UserMessageResponse = {
+  has_message: boolean
+  message: string
+}
+
+export async function fetchUserMessage(): Promise<
+  ApiResult<UserMessageResponse | ApiMessage | string>
+> {
+  return jsonFetch<UserMessageResponse | ApiMessage | string>('/users/message')
+}
+
+export async function clearUserMessage(): Promise<ApiResult<{ status: string } | ApiMessage | string>> {
+  return jsonFetch<{ status: string } | ApiMessage | string>('/users/message', {
+    method: 'DELETE'
   })
 }

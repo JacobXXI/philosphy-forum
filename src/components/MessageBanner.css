@@ -1,0 +1,63 @@
+.message-banner {
+  width: min(100%, 1100px);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.message-banner__body {
+  margin: 1rem 0 0.5rem;
+  background: linear-gradient(135deg, #0b6b9c, #0f9fb3);
+  color: #f7fbff;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 22px rgba(0, 66, 122, 0.12);
+}
+
+.message-banner__text {
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.message-banner__close {
+  background: rgba(255, 255, 255, 0.14);
+  color: #f7fbff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.16s ease;
+}
+
+.message-banner__close[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.message-banner__close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.message-banner__close:focus-visible {
+  outline: 2px solid #f7fbff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .message-banner {
+    padding: 0 1rem;
+  }
+
+  .message-banner__body {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .message-banner__close {
+    align-self: flex-end;
+  }
+}

@@ -82,7 +82,7 @@ export function CreateTopicPanel({
             取消
           </button>
           <button type="submit" className="create-topic-submit" disabled={loading}>
-            {loading ? '发布中…' : '发布话题'}
+            {loading ? '正在检查，请稍候...' : '发布话题'}
           </button>
         </div>
       </form>
